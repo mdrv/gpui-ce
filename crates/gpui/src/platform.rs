@@ -944,6 +944,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_exclusive_zone(&self, _zone: Pixels) {}
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     fn set_exclusive_edge(&self, _edge: layer_shell::Anchor) {}
+    /// Linux (wayland layer-shell) only: change keyboard interactivity at
+    /// runtime. `None` gives the keyboard back to the compositor; `OnDemand`
+    /// /`Exclusive` take it again. No-op on other platforms/backends.
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn set_keyboard_interactivity(&self, _mode: layer_shell::KeyboardInteractivity) {}
     fn set_input_region(&self, _region: Option<&[Bounds<Pixels>]>) {}
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
