@@ -1,3 +1,8 @@
+> **MDRV fork notice** — this checkout carries patches for the mdrv-ds
+> suite (DualSense controller proxy + GPUI layer-shell overlay apps).
+> See [MDRV.md](MDRV.md) for what changed and why.
+> Upstream: <https://github.com/gpui-ce/gpui-ce>
+
 # gpui - Community Edition
 
 A community fork of [GPUI](https://gpui.rs), Zed's GPU-accelerated UI framework.
