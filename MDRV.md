@@ -52,8 +52,9 @@ Full sync procedure: `/x/m/v270/gpui/gpui-ce-sync.md`.
 
 ## Consumers
 
-mdrv-ds-battery, mdrv-ds-clock, mdrv-ds-launcher, mdrv-ds-legend,
-mdrv-ds-overlay, mdrv-ds-shell — all path-dep `/g/gpui-ce/crates/*`
-(only launcher/clock/overlay use `gpui_platform` directly; overlay also
-path-deps the audio/notify/settings/legend/battery/shell crates, which
-themselves do not depend on this fork).
+mdrv-ds-clock, mdrv-ds-launcher, mdrv-ds-legend, mdrv-ds-overlay,
+mdrv-ds-shell — all path-dep `/g/gpui-ce/crates/*` (only
+launcher/clock/overlay use `gpui_platform` directly). The former
+mdrv-ds-{audio,settings,notify,battery} satellite crates were merged
+into mdrv-ds-overlay on 2026-08-31; their CLI binaries survive as
+`src/bin/*` in that repo (same names, same socket protocol).
