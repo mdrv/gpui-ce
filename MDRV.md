@@ -37,7 +37,23 @@ upstream via:
 Keep patches minimal and re-submit upstream when feasible; drop them from
 this file when they land.
 
+## Dependency convention (since the 2026-08-31 upstream sync)
+
+Upstream renamed the packages: `crates/gpui` is package **`gpui-ce`**
+(lib name still `gpui`, so `use gpui::…` is unchanged) and
+`crates/gpui_platform` is package **`gpui_ce_platform`**. Consumers
+therefore need `package=` keys:
+
+    [dependencies]
+    gpui = { path = "/g/gpui-ce/crates/gpui", package = "gpui-ce" }
+    gpui_platform = { path = "/g/gpui-ce/crates/gpui_platform", package = "gpui_ce_platform", features = ["wayland", "x11"] }
+
+Full sync procedure: `/x/m/v270/gpui/gpui-ce-sync.md`.
+
 ## Consumers
 
-mdrv-ds-audio, mdrv-ds-battery, mdrv-ds-launcher, mdrv-ds-legend,
-mdrv-ds-notify, mdrv-ds-settings (all path-dep `/g/gpui-ce/crates/*`).
+mdrv-ds-battery, mdrv-ds-clock, mdrv-ds-launcher, mdrv-ds-legend,
+mdrv-ds-overlay, mdrv-ds-shell — all path-dep `/g/gpui-ce/crates/*`
+(only launcher/clock/overlay use `gpui_platform` directly; overlay also
+path-deps the audio/notify/settings/legend/battery/shell crates, which
+themselves do not depend on this fork).
