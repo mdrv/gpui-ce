@@ -805,6 +805,22 @@ impl X11Client {
                 let mut state = self.0.borrow_mut();
                 if let Some(window_ref) = state.windows.get_mut(&event.window) {
                     window_ref.is_mapped = true;
+                    // MDRV: activate() may have run while this window was
+                    // still unmapped, so its XSetInputFocus BadMatched and
+                    // was dropped. The window is viewable now — land the
+                    // focus request that was recorded then.
+                    if window_ref.window.state.borrow().focus_requested {
+                        window_ref.window.state.borrow_mut().focus_requested = false;
+                        state
+                            .xcb_connection
+                            .set_input_focus(
+                                xproto::InputFocus::POINTER_ROOT,
+                                event.window,
+                                xproto::Time::CURRENT_TIME,
+                            )
+                            .log_err();
+                        xcb_flush(&state.xcb_connection);
+                    }
                 }
                 state.update_refresh_loop(event.window);
             }
