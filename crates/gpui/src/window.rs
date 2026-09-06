@@ -2134,14 +2134,15 @@ impl Window {
     /// edge is deduced from the anchor. The edge must be a single edge the surface
     /// is anchored to, or it is ignored. (Wayland layer-shell windows only)
     #[cfg(all(target_os = "linux", feature = "wayland"))]
-    /// Linux (wayland layer-shell) only: change this window's keyboard
-    /// interactivity at runtime (see [`layer_shell::KeyboardInteractivity`]).
-    pub fn set_keyboard_interactivity(&self, mode: crate::layer_shell::KeyboardInteractivity) {
-        self.platform_window.set_keyboard_interactivity(mode);
-    }
-
     pub fn set_exclusive_edge(&self, edge: crate::layer_shell::Anchor) {
         self.platform_window.set_exclusive_edge(edge);
+    }
+
+    /// Linux (wayland layer-shell) only: change this window's keyboard
+    /// interactivity at runtime (see [`layer_shell::KeyboardInteractivity`]).
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    pub fn set_keyboard_interactivity(&self, mode: crate::layer_shell::KeyboardInteractivity) {
+        self.platform_window.set_keyboard_interactivity(mode);
     }
 
     /// Start a window resize operation (Wayland)
