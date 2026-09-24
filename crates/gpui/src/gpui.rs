@@ -5,10 +5,9 @@
 #![allow(unused_mut)] // False positives in platform specific code
 
 extern crate self as gpui;
-#[doc(hidden)]
-pub static GPUI_MANIFEST_DIR: &'static str = env!("CARGO_MANIFEST_DIR");
 #[macro_use]
 mod action;
+mod animated;
 mod app;
 
 mod arena;
@@ -18,6 +17,8 @@ mod bounds_tree;
 mod color;
 /// The default colors used by GPUI.
 pub mod colors;
+#[cfg(feature = "profiler")]
+mod debug_overlay;
 mod element;
 mod elements;
 mod executor;
@@ -32,6 +33,7 @@ mod interactive;
 mod key_dispatch;
 mod keymap;
 mod lerp;
+mod motion;
 mod path_builder;
 mod platform;
 pub mod prelude;
@@ -42,13 +44,16 @@ pub mod profiler;
     target_os = "windows",
     target_os = "linux",
     target_family = "wasm",
-    feature = "bench"
+    feature = "test-support",
+    feature = "bench-support"
 ))]
 #[expect(missing_docs)]
 pub mod queue;
 mod scene;
 mod shared_uri;
+mod spring;
 mod style;
+mod style_transitions;
 mod styled;
 mod subscription;
 mod svg_renderer;
@@ -90,6 +95,7 @@ pub use accesskit;
 pub use accesskit::Action as AccessibleAction;
 pub use accesskit::{Orientation, Role, Toggled};
 pub use action::*;
+pub use animated::*;
 pub use anyhow::Result;
 pub use app::*;
 pub(crate) use arena::*;
@@ -97,6 +103,8 @@ pub use asset_cache::*;
 pub use assets::*;
 pub use color::*;
 pub use ctor::ctor;
+#[cfg(feature = "profiler")]
+pub use debug_overlay::*;
 pub use element::*;
 pub use elements::*;
 pub use executor::*;
@@ -106,6 +114,7 @@ pub use global::*;
 pub use gpui_macros::{
     AppContext, IntoElement, Render, VisualContext, bench, property_test, register_action, test,
 };
+pub use spring::*;
 
 /// Defines a Criterion benchmark group for benchmarks annotated with [`gpui::bench`].
 ///
@@ -140,6 +149,7 @@ pub use interactive::*;
 use key_dispatch::*;
 pub use keymap::*;
 pub use lerp::*;
+pub use motion::*;
 pub use path_builder::*;
 pub use platform::*;
 pub use profiler::*;
@@ -150,6 +160,7 @@ pub use scene::*;
 pub use shared_uri::*;
 use std::{any::Any, future::Future};
 pub use style::*;
+pub use style_transitions::*;
 pub use styled::*;
 pub use subscription::*;
 pub use svg_renderer::*;
@@ -164,6 +175,7 @@ pub use util::{FutureExt, Timeout};
 pub use view::*;
 pub use window::*;
 
+#[cfg(not(target_family = "wasm"))]
 pub use pollster::block_on;
 
 /// The context trait, allows the different contexts in GPUI to be used

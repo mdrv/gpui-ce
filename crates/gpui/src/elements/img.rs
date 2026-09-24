@@ -346,7 +346,10 @@ impl Element for Img {
                             }
 
                             let image_size = data.render_size(frame_index);
-                            style.aspect_ratio = Some(image_size.width / image_size.height);
+
+                            if style.aspect_ratio.is_none() {
+                                style.aspect_ratio = Some(image_size.width / image_size.height);
+                            }
 
                             if let Length::Auto = style.size.width {
                                 style.size.width = match style.size.height {
@@ -490,10 +493,11 @@ impl Element for Img {
                         .get_bounds(bounds, data.size(layout_state.frame_index));
                     let corner_radii = style.corner_radii.to_pixels(window.rem_size());
                     window
-                        .paint_image(
+                        .paint_image_with_corner_smoothing(
                             bounds,
                             new_bounds,
                             corner_radii,
+                            style.corner_smoothing.unwrap_or_default(),
                             data,
                             layout_state.frame_index,
                             self.style.grayscale,
@@ -625,7 +629,7 @@ impl Asset for ImageAssetLoader {
         // TODO: Can we make SVGs always rescale?
         // let scale_factor = cx.scale_factor();
         let svg_renderer = cx.svg_renderer();
-        let asset_source = cx.asset_source().clone();
+        let asset_registry = cx.assets().clone();
         async move {
             let bytes = match source.clone() {
                 Resource::Path(uri) => fs::read(uri.as_ref())?,
@@ -649,7 +653,7 @@ impl Asset for ImageAssetLoader {
                     response.body
                 }
                 Resource::Embedded(path) => {
-                    let data = asset_source.load(&path).ok().flatten();
+                    let data = asset_registry.load(&path);
                     if let Some(data) = data {
                         data.to_vec()
                     } else {
@@ -889,6 +893,44 @@ mod tests {
                 rendered_tile_bounds.size.height.0,
             ),
             (50, 0, 100, 100),
+        );
+    }
+
+    #[gpui::test]
+    fn explicit_aspect_ratio_is_not_overridden_by_intrinsic_ratio(cx: &mut TestAppContext) {
+        let window = cx.add_empty_window();
+
+        // A portrait image in a square container
+        window.draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+            div()
+                .size(px(100.))
+                .overflow_hidden()
+                .child(
+                    img(ImageSource::Render(test_image_with_size(100, 200)))
+                        .size_full()
+                        .aspect_square()
+                        .object_fit(ObjectFit::Contain),
+                )
+                .into_any_element()
+        });
+
+        let (rendered_bounds, scale_factor) = window.update(|window, _| {
+            let sprite = window
+                .rendered_frame
+                .scene
+                .polychrome_sprites
+                .last()
+                .expect("contained image should paint a sprite");
+            (sprite.bounds, window.scale_factor())
+        });
+
+        // The element stays 100x100, so the image is letterboxed horizontally
+        assert_eq!(
+            rendered_bounds,
+            Bounds {
+                origin: point(px(25.).scale(scale_factor), px(0.).scale(scale_factor)),
+                size: size(px(50.).scale(scale_factor), px(100.).scale(scale_factor)),
+            }
         );
     }
 

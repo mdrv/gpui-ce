@@ -6,7 +6,7 @@ set positional-arguments := true
 set allow-duplicate-variables := true
 
 project_root := justfile_directory()
-msrv := "1.92.0"
+msrv := "1.95.0"
 
 # ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰ #
 #      Recipes      #
@@ -83,7 +83,7 @@ check-wasm-atomics:
 check-examples:
     @echo "📐 Checking examples..."
     cargo build --package gpui-ce --examples
-    cargo check --package gpui_ce_web --target wasm32-unknown-unknown
+    cargo check --package gpui_ce_web --target wasm32-unknown-unknown --no-default-features
 
 
 [doc('Run all workspace unit and integration tests')]
@@ -154,11 +154,6 @@ typos:
     @echo "🔤 Checking for typos..."
     typos
 
-[doc('Check TOML formatting with taplo')]
-[group('quality')]
-taplo:
-    @echo "📋 Checking TOML formatting..."
-    taplo fmt --check
 
 [doc('Check for unused dependencies')]
 [group('quality')]
@@ -172,9 +167,9 @@ msrv-check:
     @echo "🦀 Checking MSRV ({{ msrv }})..."
     cargo +{{ msrv }} check --workspace
 
-[doc('Run all quality checks: fmt-check, clippy, typos, taplo, machete')]
+[doc('Run all quality checks: fmt-check, clippy, typos, machete')]
 [group('quality')]
-lint: fmt-check clippy typos taplo machete
+lint: fmt-check clippy typos machete
 
 [doc('Verify packages conform to workspace standards')]
 [group('quality')]
@@ -232,7 +227,6 @@ ci:
             cargo check --package gpui_ce_web --target wasm32-unknown-unknown
         })
         (if (available "typos") { run-check "typos" { typos } } else { skip "typos" "not installed" })
-        (if (available "taplo") { run-check "taplo" { taplo fmt --check } } else { skip "taplo" "not installed" })
         (if (available "cargo-machete") { run-check "cargo machete" { cargo machete } } else { skip "cargo machete" "install: cargo install cargo-machete" })
         (if (available "rustup") {
             run-check $"MSRV ($msrv)" { run-external "cargo" $"+($msrv)" "check" "--workspace" }
@@ -249,7 +243,7 @@ ci:
     }
     print "\n✅ All checks passed!"
 
-[doc('Run tidy checks only: fmt, clippy, typos, taplo, machete, MSRV')]
+[doc('Run tidy checks only: fmt, clippy, typos, machete, MSRV')]
 [group('ci')]
 ci-tidy:
     #!/usr/bin/env nu
@@ -280,7 +274,6 @@ ci-tidy:
         (run-check "cargo fmt" { cargo fmt --all -- --check })
         (run-check "cargo clippy" { cargo clippy --workspace --all-targets -- -D warnings })
         (if (available "typos") { run-check "typos" { typos } } else { skip "typos" "not installed" })
-        (if (available "taplo") { run-check "taplo" { taplo fmt --check } } else { skip "taplo" "not installed" })
         (if (available "cargo-machete") { run-check "cargo machete" { cargo machete } } else { skip "cargo machete" "install: cargo install cargo-machete" })
         (if (available "rustup") {
             run-check $"MSRV ($msrv)" { run-external "cargo" $"+($msrv)" "check" "--workspace" }
@@ -433,15 +426,6 @@ publish dry="false":
 
         "crates/gpui_platform/Cargo.toml"
 
-        # GPUI CE Components. These are a nested workspace because its
-        # examples and web demo have their own resolver and lockfile.
-        "crates/gpui_ce_components/crates/macros/Cargo.toml"
-        "crates/gpui_ce_components/crates/assets/Cargo.toml"
-        "crates/gpui_ce_components/crates/base/Cargo.toml"
-        "crates/gpui_ce_components/crates/fps/Cargo.toml"
-        "crates/gpui_ce_components/crates/shell/Cargo.toml"
-        "crates/gpui_ce_components/crates/ui/Cargo.toml"
-        "crates/gpui_ce_components/crates/webview/Cargo.toml"
     ]
 
     let dry_flag = if $dry_run { ["--dry-run"] } else { [] }
@@ -454,8 +438,6 @@ publish dry="false":
     # validates the complete local release graph rather than stale registry
     # versions. The patches are passed only to the dry run and are never part
     # of the published manifests.
-    let root_crates = $crates | where { |manifest| not ($manifest | str starts-with "crates/gpui_ce_components/") }
-
     for manifest in $crates {
         let name = ($manifest | path dirname | path basename)
         let metadata = (^cargo metadata --no-deps --format-version 1 --manifest-path $manifest | from json)
@@ -492,11 +474,7 @@ publish dry="false":
         }
 
         print $"\n📦 Publishing ($name)..."
-        let patch_manifests = if ($manifest | str starts-with "crates/gpui_ce_components/") {
-            $crates
-        } else {
-            $root_crates
-        }
+        let patch_manifests = $crates
         let patch_flags = if $dry_run {
             $patch_manifests
                 | each { |patch_manifest|
@@ -530,7 +508,7 @@ publish dry="false":
 sync-upstream *args:
     @python3 {{ project_root }}/scripts/sync-upstream/sync_upstream.py sync {{ args }}
 
-[doc('One-time: record the upstream baseline to sync from (defaults to the pinned zed dep rev)')]
+[doc('One-time: record the upstream baseline to sync from (pass the upstream SHA explicitly)')]
 [group('sync')]
 sync-upstream-bootstrap *args:
     @python3 {{ project_root }}/scripts/sync-upstream/sync_upstream.py bootstrap {{ args }}

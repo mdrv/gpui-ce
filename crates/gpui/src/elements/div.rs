@@ -17,20 +17,19 @@
 
 use crate::{
     Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, AppContext, Bounds, ClickEvent,
-    DispatchPhase, Display, Element, ElementId, Entity, EntityId, ExternalDragPayload,
-    ExternalDragPayloadSource, FocusHandle, Global, GlobalElementId, Hitbox, HitboxBehavior,
-    HitboxId, InspectorElementId, IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent,
-    KeyboardButton, KeyboardClickEvent, LayoutId, ModifiersChangedEvent, MouseButton,
-    MouseClickEvent, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MousePressureEvent,
-    MouseUpEvent, OngoingScroll, Overflow, ParentElement, PinchEvent, Pixels, Point, Render,
-    ScrollWheelEvent, SharedString, Size, Style, StyleRefinement, Styled, Task, TooltipId,
-    Visibility, Window, WindowControlArea, point, px, size,
+    CursorStyle, DispatchPhase, Display, Element, ElementId, Entity, EntityId, ExternalDragPayload,
+    FocusHandle, Global, GlobalElementId, Hitbox, HitboxBehavior, HitboxId, InspectorElementId,
+    IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent, KeyboardButton, KeyboardClickEvent,
+    LayoutId, ModifiersChangedEvent, MouseButton, MouseClickEvent, MouseDownEvent, MouseExitEvent,
+    MouseMoveEvent, MousePressureEvent, MouseUpEvent, OngoingScroll, Overflow, ParentElement,
+    PinchEvent, Pixels, Point, Render, ScrollWheelEvent, SharedString, Size, Style,
+    StyleRefinement, StyleTransitionContext, StyleTransitionState, StyleTransitions, Styled, Task,
+    TooltipId, Visibility, Window, WindowControlArea, point, px, size,
 };
 use collections::HashMap;
 use gpui_util::ResultExt;
 use refineable::Refineable;
 use smallvec::SmallVec;
-use stacksafe::{StackSafe, stacksafe};
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
@@ -44,6 +43,11 @@ use std::{
 };
 
 use super::ImageCacheProvider;
+
+#[cfg(feature = "stacker")]
+type StackSafe<T> = stacksafe::StackSafe<T>;
+#[cfg(not(feature = "stacker"))]
+type StackSafe<T> = T;
 
 const DRAG_THRESHOLD: f64 = 2.;
 const DEFAULT_TOOLTIP_SHOW_DELAY: Duration = Duration::from_millis(500);
@@ -334,6 +338,17 @@ impl Interactivity {
             }));
     }
 
+    /// Bind the given callback to the mouse move event, triggering even if the mouse is outside the element's hitbox.
+    /// The imperative API equivalent to [`InteractiveElement::on_mouse_move_all`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    pub fn on_mouse_move_all(
+        &mut self,
+        listener: impl Fn(&MouseMoveEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static,
+    ) {
+        self.mouse_move_listeners.push(Box::new(listener));
+    }
+
     /// Bind the given callback to the mouse exit event, during the bubble phase.
     /// The imperative API equivalent to [`InteractiveElement::on_mouse_exit`].
     ///
@@ -568,21 +583,75 @@ impl Interactivity {
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     pub fn on_drop<T: 'static>(&mut self, listener: impl Fn(&T, &mut Window, &mut App) + 'static) {
-        self.drop_listeners.push((
-            TypeId::of::<T>(),
-            Box::new(move |dragged_value, window, cx| {
-                listener(dragged_value.downcast_ref().unwrap(), window, cx);
-            }),
-        ));
+        let type_id = TypeId::of::<T>();
+        let on_drop = Box::new(
+            move |dragged_any: &dyn Any, _evt: &MouseUpEvent, window: &mut Window, cx: &mut App| {
+                listener(dragged_any.downcast_ref().unwrap(), window, cx);
+            },
+        );
+        // Find a pre-existing DropListener for the provided type T, or create a new one if it does not yet exist.
+        match self.get_mut_drop_listener(type_id) {
+            Some((_, drop_listener)) => {
+                drop_listener.on_drop = Some(on_drop);
+            }
+            None => {
+                self.drop_listeners.push((
+                    TypeId::of::<T>(),
+                    DropListener::<dyn Any> {
+                        can_drop: None,
+                        on_drag_over: None,
+                        on_drop: Some(on_drop),
+                    },
+                ));
+            }
+        }
     }
 
-    /// Use the given predicate to determine whether or not a drop event should be dispatched to this element.
+    /// Attaches a [`DropListener`] to this element, which will be notified when a drag is occurring with the provided type.
+    /// The imperative API equivalent to [`InteractiveElement::on_drop_alt`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    pub fn on_drop_alt<T: 'static>(&mut self, listener: DropListener<T>) {
+        self.drop_listeners
+            .push((TypeId::of::<T>(), listener.into_any()));
+    }
+
+    fn get_mut_drop_listener(
+        &mut self,
+        type_id: TypeId,
+    ) -> Option<&mut (TypeId, DropListener<dyn Any>)> {
+        let mut iter = self.drop_listeners.iter_mut();
+        iter.find(|(existing_type_id, _listener)| *existing_type_id == type_id)
+    }
+
+    /// Uses the given predicate to determine whether or not a drop event should be dispatched to this element.
+    /// Only needed if you have additional logic to do agnostic of drop type and multiple drop listeners.
+    /// Otherwise, callers should use [`DropListener::can_drop`].
+    ///
     /// The imperative API equivalent to [`InteractiveElement::can_drop`].
     pub fn can_drop(
         &mut self,
         predicate: impl Fn(&dyn Any, &mut Window, &mut App) -> bool + 'static,
     ) {
-        self.can_drop_predicate = Some(Box::new(predicate));
+        self.can_drop_predicate = Some(Box::new(move |value, hitbox, window, cx| {
+            hitbox.is_hovered(window) && predicate(value, window, cx)
+        }));
+    }
+
+    /// Apply the given style when something is dragged over this element.
+    /// Will not trigger if the element doesnt have a drop listener for the value being dragged.
+    /// Use this when the style of the element is not affected by the type of the dragged item.
+    /// Otherwise use [`DropListener::on_drag_over`] or [`InteractiveElement::drag_over`].
+    ///
+    /// The imperative API equivalent to [`InteractiveElement::on_drag_over_any`].
+    pub fn on_drag_over_any(
+        &mut self,
+        predicate: impl Fn(StyleRefinement, &dyn Any, &mut Window, &mut App) -> StyleRefinement
+        + 'static,
+    ) {
+        self.drag_over_style = Some(Box::new(move |value, window, app| {
+            predicate(StyleRefinement::default(), value, window, app)
+        }));
     }
 
     /// Bind the given callback to click events of this element.
@@ -627,17 +696,37 @@ impl Interactivity {
         T: 'static,
         W: 'static + Render,
     {
+        let value = Arc::new(value);
+        self.on_drag_alt(move |cursor_offset, cursor_style, window, cx| {
+            let view = constructor(value.as_ref(), cursor_offset, window, cx);
+            AnyDrag {
+                view: view.into(),
+                value: value.clone(),
+                cursor_offset,
+                cursor_style,
+                external_payload_source: None,
+            }
+        });
+    }
+
+    /// Executed when dragging is initiated. The callback must return a valid [`AnyDrag`]
+    /// which contains the app value, a view to render the represented value,
+    /// and a way to resolve platform external payload information if desired.
+    ///
+    /// This API should also be used as the equivalent of 'on drag start' with the [`Self::on_drag_move`] API.
+    /// The imperative API equivalent to [`StatefulInteractiveElement::on_drag_alt`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    pub fn on_drag_alt<F>(&mut self, listener: F)
+    where
+        Self: Sized,
+        F: 'static + Fn(Point<Pixels>, Option<CursorStyle>, &mut Window, &mut App) -> AnyDrag,
+    {
         debug_assert!(
             self.drag_listener.is_none(),
             "calling on_drag more than once on the same element is not supported"
         );
-        self.drag_listener = Some(DragListener {
-            value: Arc::new(value),
-            render: Box::new(move |value, offset, window, cx| {
-                constructor(value.downcast_ref().unwrap(), offset, window, cx).into()
-            }),
-            external_payload: None,
-        });
+        self.drag_listener = Some(Box::new(listener));
     }
 
     /// Registers a callback resolving a payload to offer the platform if a drag started by this
@@ -651,25 +740,35 @@ impl Interactivity {
         Self: Sized,
         T: 'static,
     {
-        let Some(drag_listener) = self.drag_listener.as_mut() else {
+        let Some(drag_listener) = self.drag_listener.take() else {
             debug_assert!(false, "external_drag_payload must be called after on_drag");
             return;
         };
-        debug_assert!(
-            drag_listener.value.as_ref().type_id() == TypeId::of::<T>(),
-            "external_drag_payload must use the same dragged value type as on_drag"
-        );
-        debug_assert!(
-            drag_listener.external_payload.is_none(),
-            "calling external_drag_payload more than once on the same element is not supported"
-        );
-        drag_listener.external_payload = Some(Box::new(move |value, window, cx| {
-            resolver(value.downcast_ref::<T>()?, window, cx)
-        }));
+
+        let resolver = Rc::new(resolver);
+        self.on_drag_alt(move |cursor_offset, cursor_style, window, cx| {
+            let mut any_drag = drag_listener(cursor_offset, cursor_style, window, cx);
+            debug_assert!(
+                any_drag.external_payload_source.is_none(),
+                "calling external_drag_payload more than once on the same element is not supported"
+            );
+            any_drag.external_payload_source = Some(Box::new({
+                let value = any_drag.value.clone();
+                let resolver = resolver.clone();
+                move |window, cx| {
+                    let value_ref = value
+                        .downcast_ref::<T>()
+                        .expect("drag value type does not match external payload type");
+                    resolver(value_ref, window, cx)
+                }
+            }));
+            any_drag
+        });
     }
 
     /// Bind the given callback on the hover start and end events of this element. Note that the boolean
     /// passed to the callback is true when the hover starts and false when it ends.
+    /// Transitions caused by layout changes under a stationary mouse also invoke the callback.
     /// The imperative API equivalent to [`StatefulInteractiveElement::on_hover`].
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
@@ -769,6 +868,21 @@ impl Interactivity {
 pub trait InteractiveElement: Sized {
     /// Retrieve the interactivity state associated with this element
     fn interactivity(&mut self) -> &mut Interactivity;
+
+    /// Builds transition configuration and animates changes to its style properties.
+    ///
+    /// An explicit [`.id()`](Self::id) should be used for repeated elements built
+    /// at the same call site so each element receives independent motion state.
+    #[track_caller]
+    fn transitions(mut self, build: impl FnOnce(StyleTransitions) -> StyleTransitions) -> Self {
+        let transitions = build(StyleTransitions::new());
+        let interactivity = self.interactivity();
+        interactivity
+            .element_id
+            .get_or_insert_with(|| ElementId::CodeLocation(*core::panic::Location::caller()));
+        interactivity.style_transitions = Some(Box::new(transitions));
+        self
+    }
 
     /// Assign this element to a group of elements that can be styled together
     fn group(mut self, group: impl Into<SharedString>) -> Self {
@@ -1033,6 +1147,18 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// Bind the given callback to the mouse move event, triggering even if the mouse is outside the element's hitbox.
+    /// The fluent API equivalent to [`Interactivity::on_mouse_move_all`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    fn on_mouse_move_all(
+        mut self,
+        listener: impl Fn(&MouseMoveEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.interactivity().on_mouse_move_all(listener);
+        self
+    }
+
     /// Bind the given callback to the mouse exit event, during the bubble phase.
     /// The fluent API equivalent to [`Interactivity::on_mouse_exit`].
     ///
@@ -1192,22 +1318,52 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// DEPRECATED: use [`on_drag_over`].
     /// Apply the given style when the given data type is dragged over this element
     fn drag_over<S: 'static>(
         mut self,
         f: impl 'static + Fn(StyleRefinement, &S, &mut Window, &mut App) -> StyleRefinement,
     ) -> Self {
-        self.interactivity().drag_over_styles.push((
-            TypeId::of::<S>(),
-            Box::new(move |currently_dragged: &dyn Any, window, cx| {
-                f(
-                    StyleRefinement::default(),
-                    currently_dragged.downcast_ref::<S>().unwrap(),
-                    window,
-                    cx,
-                )
-            }),
-        ));
+        self.on_drag_over(f)
+    }
+
+    /// Apply the given style when the given data type is dragged over this element
+    fn on_drag_over<S: 'static>(
+        mut self,
+        f: impl 'static + Fn(StyleRefinement, &S, &mut Window, &mut App) -> StyleRefinement,
+    ) -> Self {
+        match self
+            .interactivity()
+            .get_mut_drop_listener(TypeId::of::<S>())
+        {
+            Some((_, drop_listener)) => {
+                drop_listener.on_drag_over = Some(Box::new(move |value_any, window, cx| {
+                    let value = value_any.downcast_ref::<S>().unwrap();
+                    f(StyleRefinement::default(), value, window, cx)
+                }))
+            }
+            None => {
+                self.interactivity().on_drop_alt(DropListener::<S> {
+                    can_drop: None,
+                    on_drag_over: Some(Box::new(move |value, window, cx| {
+                        f(StyleRefinement::default(), value, window, cx)
+                    })),
+                    on_drop: None,
+                });
+            }
+        }
+        self
+    }
+
+    /// Apply the given style when something is dragged over this element
+    /// The fluent API equivalent to [`Interactivity::on_drag_over_any`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    fn on_drag_over_any(
+        mut self,
+        f: impl 'static + Fn(StyleRefinement, &dyn Any, &mut Window, &mut App) -> StyleRefinement,
+    ) -> Self {
+        self.interactivity().on_drag_over_any(f);
         self
     }
 
@@ -1239,7 +1395,19 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// Attaches a [`DropListener`] to this element, which will be notified when a drag is occurring with the provided type.
+    /// The fluent API equivalent to [`Interactivity::on_drop_alt`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    fn on_drop_alt<T: 'static>(mut self, listener: DropListener<T>) -> Self {
+        self.interactivity().on_drop_alt(listener);
+        self
+    }
+
     /// Use the given predicate to determine whether or not a drop event should be dispatched to this element.
+    /// Only needed if you have additional logic to do agnostic of drop type and multiple drop listeners.
+    /// Otherwise, callers should use [`DropListener::can_drop`].
+    ///
     /// The fluent API equivalent to [`Interactivity::can_drop`].
     fn can_drop(
         mut self,
@@ -1321,6 +1489,18 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
+    /// Set the author-provided identifier exposed to accessibility clients.
+    ///
+    /// Unlike the GPUI element ID, this value is visible outside the process.
+    /// Keep it stable and unique within its accessibility tree.
+    /// AccessKit maps it to platform identifiers where supported, including
+    /// UIA `AutomationId` on Windows, `AXIdentifier` on macOS, and AT-SPI
+    /// `AccessibleId` on Linux stacks whose deployed adapter exposes it.
+    fn accessibility_id(mut self, id: impl Into<SharedString>) -> Self {
+        self.interactivity().aria.author_id = Some(id.into());
+        self
+    }
+
     /// Set the accessible label for this element.
     fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.interactivity().aria.label = Some(label.into());
@@ -1343,6 +1523,15 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// technology what the keymap is.
     fn aria_keyshortcuts(mut self, keyshortcuts: impl Into<SharedString>) -> Self {
         self.interactivity().aria.keyshortcuts = Some(keyshortcuts.into());
+        self
+    }
+
+    /// Hide this element and its descendants from assistive technology.
+    ///
+    /// This does not change rendering, focus, or input. Do not use it on an
+    /// element that can receive focus or contains focusable descendants.
+    fn aria_hidden(mut self) -> Self {
+        self.interactivity().aria.hidden = true;
         self
     }
 
@@ -1370,9 +1559,9 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// to any element — as children of this element's a11y node. For example,
     /// text runs describing an editor's text content.
     ///
-    /// The closure is called after this element is prepainted, and only if it
-    /// contributed a node to the accessibility tree (i.e. it has an id and a
-    /// [`role`][StatefulInteractiveElement::role]).
+    /// GPUI calls the closure after prepaint. The element must have an id and
+    /// either a [`role`][StatefulInteractiveElement::role] or
+    /// [`aria_hidden()`][StatefulInteractiveElement::aria_hidden].
     ///
     /// See [`Element::a11y_synthetic_children`] for details.
     fn a11y_synthetic_children(
@@ -1398,6 +1587,13 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// Set the toggled state for this element.
     fn aria_toggled(mut self, toggled: accesskit::Toggled) -> Self {
         self.interactivity().aria.toggled = Some(toggled);
+        self
+    }
+
+    /// Set whether this element disallows input, e.g. a disabled control or a
+    /// disabled group of controls (maps to AccessKit's `Disabled` flag).
+    fn aria_disabled(mut self, disabled: bool) -> Self {
+        self.interactivity().aria.disabled = Some(disabled);
         self
     }
 
@@ -1485,6 +1681,30 @@ pub trait StatefulInteractiveElement: InteractiveElement {
     /// Set the column count for this element.
     fn aria_column_count(mut self, count: usize) -> Self {
         self.interactivity().aria.column_count = Some(count);
+        self
+    }
+
+    /// Mark this element (typically a dialog) as explicitly modal, so
+    /// assistive technology treats the rest of the window as inert while it
+    /// is open (maps to AccessKit's `Modal` flag).
+    fn aria_modal(mut self, modal: bool) -> Self {
+        self.interactivity().aria.modal = Some(modal);
+        self
+    }
+
+    /// Set how urgently assistive technology should announce updates to this
+    /// element, as an ARIA live region. See [`accesskit::Live`].
+    fn aria_live(mut self, live: accesskit::Live) -> Self {
+        self.interactivity().aria.live = Some(live);
+        self
+    }
+
+    /// Set whether updates to this live region should be announced as a
+    /// whole rather than describing only the changed part (maps to
+    /// AccessKit's `LiveAtomic` flag). Only meaningful alongside
+    /// [`aria_live`][Self::aria_live].
+    fn aria_live_atomic(mut self, atomic: bool) -> Self {
+        self.interactivity().aria.live_atomic = Some(atomic);
         self
     }
 
@@ -1622,6 +1842,24 @@ pub trait StatefulInteractiveElement: InteractiveElement {
         self
     }
 
+    /// Executed when dragging is initiated. The callback must return a valid [`AnyDrag`]
+    /// which contains the app value, a view to render the represented value,
+    /// and a way to resolve platform external payload information if desired.
+    ///
+    /// This API should also be used as the equivalent of 'on drag start' with the [`InteractiveElement::on_drag_move`] API.
+    /// The callback also has access to the offset of triggering click from the origin of parent element.
+    /// The fluent API equivalent to [`Interactivity::on_drag`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    fn on_drag_alt<F>(mut self, listener: F) -> Self
+    where
+        Self: Sized,
+        F: 'static + Fn(Point<Pixels>, Option<CursorStyle>, &mut Window, &mut App) -> AnyDrag,
+    {
+        self.interactivity().on_drag_alt(listener);
+        self
+    }
+
     /// Registers a callback resolving a payload to offer the platform if a drag started by this
     /// element leaves the window. It is invoked at most once per drag gesture, when the pointer
     /// exits the viewport. Must be called after [`Self::on_drag`], with the same dragged value
@@ -1641,6 +1879,7 @@ pub trait StatefulInteractiveElement: InteractiveElement {
 
     /// Bind the given callback on the hover start and end events of this element. Note that the boolean
     /// passed to the callback is true when the hover starts and false when it ends.
+    /// Transitions caused by layout changes under a stationary mouse also invoke the callback.
     /// The fluent API equivalent to [`Interactivity::on_hover`].
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
@@ -1733,18 +1972,128 @@ pub(crate) type PinchListener =
 pub(crate) type ClickListener = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 pub(crate) type HoverListener = Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>;
 
-pub(crate) struct DragListener {
-    value: Arc<dyn Any>,
-    render: Box<dyn Fn(&dyn Any, Point<Pixels>, &mut Window, &mut App) -> AnyView + 'static>,
-    external_payload: Option<ExternalDragPayloadResolver>,
+pub(crate) type DragListener =
+    Box<dyn Fn(Point<Pixels>, Option<CursorStyle>, &mut Window, &mut App) -> AnyDrag + 'static>;
+
+/// Function type for [`DropListener::can_drop`], which checks if a typed payload can be dropped on an element's hitbox.
+pub type CanDropListenerFn<T> = Box<dyn Fn(&T, &Hitbox, &mut Window, &mut App) -> bool + 'static>;
+/// Function type for [`DropListener::on_drag_over`].
+pub type OnDragOverFn<T> = Box<dyn Fn(&T, &mut Window, &mut App) -> StyleRefinement + 'static>;
+/// Function type for [`DropListener::on_drop`].
+pub type OnDropFn<T> = Box<dyn Fn(&T, &MouseUpEvent, &mut Window, &mut App) + 'static>;
+
+/// Behaviors for an interactive element when receiving a dragged element that could be or has been dropped it.
+pub struct DropListener<T: ?Sized> {
+    /// Called when a dragged value of the matching type could be dropped on the owning element.
+    pub can_drop: Option<CanDropListenerFn<T>>,
+    /// If a drag value is moving over the owning element,
+    /// [`Interactivity::can_drop`] is none or returns true, and [`can_drop`](Self::can_drop) is None or returns true,
+    /// then this is called to refine the style of the owning element.
+    pub on_drag_over: Option<OnDragOverFn<T>>,
+    /// If a drag value is dropped over the owning element,
+    /// [`Interactivity::can_drop`] is none or returns true, and [`can_drop`](Self::can_drop) is None or returns true,
+    /// then this is called to process the dropped value.
+    pub on_drop: Option<OnDropFn<T>>,
+}
+impl<T> Default for DropListener<T> {
+    fn default() -> Self {
+        Self {
+            can_drop: None,
+            on_drag_over: None,
+            on_drop: None,
+        }
+    }
+}
+impl<T: Sized + 'static> DropListener<T> {
+    /// Binds the given predicate to determine whether or not drop events should be dispatched to this handler.
+    pub fn can_drop_within(
+        mut self,
+        predicate: impl Fn(&T, &mut Window, &mut App) -> bool + 'static,
+    ) -> Self {
+        self.can_drop_anywhere(move |value, hitbox, window, cx| {
+            hitbox.is_hovered(window) && predicate(value, window, cx)
+        })
+    }
+
+    /// Binds the given predicate to determine whether or not drop events should be dispatched to this handler.
+    pub fn can_drop_anywhere(
+        mut self,
+        predicate: impl Fn(&T, &Hitbox, &mut Window, &mut App) -> bool + 'static,
+    ) -> Self {
+        self.can_drop = Some(Box::new(predicate));
+        self
+    }
+
+    /// If a value of type [`T`] is dragged over the owning element,
+    /// [`Interactivity::can_drop`] is none or returns true, and [`can_drop`](Self::can_drop) is None or returns true,
+    /// then this is called to provide style changes to apply to the owning element.
+    pub fn on_drag_over(
+        mut self,
+        predicate: impl Fn(StyleRefinement, &T, &mut Window, &mut App) -> StyleRefinement + 'static,
+    ) -> Self {
+        self.on_drag_over = Some(Box::new(move |value, window, cx| {
+            predicate(StyleRefinement::default(), value, window, cx)
+        }));
+        self
+    }
+
+    /// If a value of type [`T`] is dropped on the owning element,
+    /// [`Interactivity::can_drop`] is none or returns true, and [`can_drop`](Self::can_drop) is None or returns true,
+    /// then this is called to process the dropped value.
+    pub fn on_drop(
+        mut self,
+        predicate: impl Fn(&T, &MouseUpEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_drop = Some(Box::new(predicate));
+        self
+    }
+
+    /// Converts the typed listener into one that can be stored as type-agnostic within an element.
+    ///
+    /// Effectively wraps all typed callbacks in [`Any::downcast_ref`](https://doc.rust-lang.org/stable/std/any/trait.Any.html#method.downcast_ref) boxed functions.
+    pub fn into_any(self) -> DropListener<dyn Any> {
+        let DropListener {
+            can_drop,
+            on_drag_over,
+            on_drop,
+        } = self;
+        let can_drop = can_drop.map(|predicate| {
+            Box::new(
+                move |any: &dyn Any, hitbox: &Hitbox, window: &mut Window, cx: &mut App| {
+                    let Some(value_ref) = any.downcast_ref::<T>() else {
+                        return false;
+                    };
+                    (&predicate)(value_ref, hitbox, window, cx)
+                },
+            ) as CanDropListenerFn<dyn Any>
+        });
+        let on_drag_over = on_drag_over.map(|predicate| {
+            Box::new(move |any: &dyn Any, window: &mut Window, cx: &mut App| {
+                let value_ref = any
+                    .downcast_ref::<T>()
+                    .expect("drop listener type was incorrect");
+                (&predicate)(value_ref, window, cx)
+            }) as OnDragOverFn<dyn Any>
+        });
+        let on_drop = on_drop.map(|predicate| {
+            Box::new(
+                move |any: &dyn Any, evt: &MouseUpEvent, window: &mut Window, cx: &mut App| {
+                    let value_ref = any
+                        .downcast_ref::<T>()
+                        .expect("drop listener type was incorrect");
+                    (&predicate)(value_ref, evt, window, cx)
+                },
+            ) as OnDropFn<dyn Any>
+        });
+        DropListener::<dyn Any> {
+            can_drop,
+            on_drag_over,
+            on_drop,
+        }
+    }
 }
 
-type ExternalDragPayloadResolver =
-    Box<dyn Fn(&dyn Any, &mut Window, &mut App) -> Option<ExternalDragPayload> + 'static>;
-
-type DropListener = Box<dyn Fn(&dyn Any, &mut Window, &mut App) + 'static>;
-
-type CanDropPredicate = Box<dyn Fn(&dyn Any, &mut Window, &mut App) -> bool + 'static>;
+type CanDropPredicate = Box<dyn Fn(&dyn Any, &Hitbox, &mut Window, &mut App) -> bool + 'static>;
 
 pub(crate) struct TooltipBuilder {
     build: Rc<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>,
@@ -1856,8 +2205,11 @@ impl InteractiveElement for Div {
 
 impl ParentElement for Div {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        #[cfg(feature = "stacker")]
         self.children
-            .extend(elements.into_iter().map(StackSafe::new))
+            .extend(elements.into_iter().map(StackSafe::new));
+        #[cfg(not(feature = "stacker"))]
+        self.children.extend(elements);
     }
 }
 
@@ -1881,6 +2233,10 @@ impl Element for Div {
             .filter(|role| *role != accesskit::Role::GenericContainer)
     }
 
+    fn is_a11y_hidden(&self) -> bool {
+        self.interactivity.aria.hidden
+    }
+
     fn write_a11y_info(&self, node: &mut accesskit::Node) {
         self.interactivity.write_a11y_info(node);
     }
@@ -1895,7 +2251,7 @@ impl Element for Div {
         }
     }
 
-    #[stacksafe]
+    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     fn request_layout(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -1931,7 +2287,7 @@ impl Element for Div {
         (layout_id, DivFrameState { child_layout_ids })
     }
 
-    #[stacksafe]
+    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     fn prepaint(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2000,20 +2356,37 @@ impl Element for Div {
                     return hitbox;
                 }
 
-                window.with_image_cache(image_cache, |window| {
-                    window.with_element_offset(scroll_offset, |window| {
-                        if let Some(order_fn) = &self.prepaint_order_fn {
-                            let order = order_fn(window, cx);
-                            for idx in order {
-                                if let Some(child) = self.children.get_mut(idx) {
-                                    child.prepaint(window, cx);
-                                }
-                            }
-                        } else {
-                            for child in &mut self.children {
+                #[inline]
+                fn prepaint_children(
+                    children: &mut [StackSafe<AnyElement>],
+                    order_fn: Option<&dyn Fn(&mut Window, &mut App) -> SmallVec<[usize; 8]>>,
+                    window: &mut Window,
+                    cx: &mut App,
+                ) {
+                    if let Some(order_fn) = order_fn {
+                        let order = order_fn(window, cx);
+                        for idx in order {
+                            if let Some(child) = children.get_mut(idx) {
                                 child.prepaint(window, cx);
                             }
                         }
+                    } else {
+                        for child in children {
+                            child.prepaint(window, cx);
+                        }
+                    }
+                }
+
+                window.with_image_cache(image_cache, |window| {
+                    window.with_style_transition_containing_bounds(bounds, |window| {
+                        window.with_element_offset(scroll_offset, |window| {
+                            prepaint_children(
+                                &mut self.children,
+                                self.prepaint_order_fn.as_deref(),
+                                window,
+                                cx,
+                            )
+                        });
                     });
 
                     if let Some(listener) = self.prepaint_listener.as_ref() {
@@ -2026,7 +2399,7 @@ impl Element for Div {
         )
     }
 
-    #[stacksafe]
+    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     fn paint(
         &mut self,
         global_id: Option<&GlobalElementId>,
@@ -2075,12 +2448,15 @@ impl IntoElement for Div {
 
 #[derive(Default)]
 pub(crate) struct AriaProperties {
+    pub(crate) author_id: Option<SharedString>,
     pub(crate) label: Option<SharedString>,
     pub(crate) description: Option<SharedString>,
     pub(crate) keyshortcuts: Option<SharedString>,
+    pub(crate) hidden: bool,
     pub(crate) selected: Option<bool>,
     pub(crate) expanded: Option<bool>,
     pub(crate) toggled: Option<accesskit::Toggled>,
+    pub(crate) disabled: Option<bool>,
     pub(crate) numeric_value: Option<f64>,
     pub(crate) min_numeric_value: Option<f64>,
     pub(crate) max_numeric_value: Option<f64>,
@@ -2095,6 +2471,9 @@ pub(crate) struct AriaProperties {
     pub(crate) column_index: Option<usize>,
     pub(crate) row_count: Option<usize>,
     pub(crate) column_count: Option<usize>,
+    pub(crate) modal: Option<bool>,
+    pub(crate) live: Option<accesskit::Live>,
+    pub(crate) live_atomic: Option<bool>,
 }
 
 /// The interactivity struct. Powers all of the general-purpose
@@ -2121,6 +2500,7 @@ pub struct Interactivity {
     /// The base style of the element, before any modifications are applied
     /// by focus, active, etc.
     pub base_style: Box<StyleRefinement>,
+    pub(crate) style_transitions: Option<Box<StyleTransitions>>,
     pub(crate) focus_style: Option<Box<StyleRefinement>>,
     pub(crate) in_focus_style: Option<Box<StyleRefinement>>,
     pub(crate) focus_visible_style: Option<Box<StyleRefinement>>,
@@ -2128,10 +2508,8 @@ pub struct Interactivity {
     pub(crate) group_hover_style: Option<GroupStyle>,
     pub(crate) active_style: Option<Box<StyleRefinement>>,
     pub(crate) group_active_style: Option<GroupStyle>,
-    pub(crate) drag_over_styles: Vec<(
-        TypeId,
-        Box<dyn Fn(&dyn Any, &mut Window, &mut App) -> StyleRefinement>,
-    )>,
+    pub(crate) drag_over_style:
+        Option<Box<dyn Fn(&dyn Any, &mut Window, &mut App) -> StyleRefinement>>,
     pub(crate) group_drag_over_styles: Vec<(TypeId, GroupStyle)>,
     pub(crate) prepaint_listeners: Vec<PrepaintListener>,
     pub(crate) mouse_down_listeners: Vec<MouseDownListener>,
@@ -2145,7 +2523,7 @@ pub struct Interactivity {
     pub(crate) key_up_listeners: Vec<KeyUpListener>,
     pub(crate) modifiers_changed_listeners: Vec<ModifiersChangedListener>,
     pub(crate) action_listeners: Vec<(TypeId, ActionListener)>,
-    pub(crate) drop_listeners: Vec<(TypeId, DropListener)>,
+    pub(crate) drop_listeners: Vec<(TypeId, DropListener<dyn Any>)>,
     pub(crate) can_drop_predicate: Option<CanDropPredicate>,
     pub(crate) click_listeners: Vec<ClickListener>,
     pub(crate) aux_click_listeners: Vec<ClickListener>,
@@ -2289,7 +2667,8 @@ impl Interactivity {
                     );
                 }
 
-                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
+                let style =
+                    self.compute_style_internal(None, None, element_state.as_mut(), window, cx);
                 let layout_id = f(style, window, cx);
                 (layout_id, element_state)
             },
@@ -2364,7 +2743,13 @@ impl Interactivity {
             |element_state, window| {
                 let mut element_state =
                     element_state.map(|element_state| element_state.unwrap_or_default());
-                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
+                let style = self.compute_style_internal(
+                    None,
+                    Some(bounds),
+                    element_state.as_mut(),
+                    window,
+                    cx,
+                );
 
                 if let Some(element_state) = element_state.as_mut() {
                     if let Some(clicked_state) = element_state.clicked_state.as_ref() {
@@ -2391,7 +2776,12 @@ impl Interactivity {
                         style.overflow_mask(bounds, window.rem_size()),
                         |window| {
                             let hitbox = if self.should_insert_hitbox(&style, window, cx) {
-                                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
+                                let hitbox = window.insert_hitbox_mut(bounds, self.hitbox_behavior);
+                                // attach the group of the div to the hitbox's tags so it can be queried in hit-test related listeners
+                                if let Some(group) = &self.group {
+                                    hitbox.tags.push(group.clone());
+                                }
+                                Some(hitbox.clone())
                             } else {
                                 None
                             };
@@ -2428,7 +2818,7 @@ impl Interactivity {
             || self.has_pinch_listeners()
             || self.drag_listener.is_some()
             || !self.drop_listeners.is_empty()
-            || !self.drag_over_styles.is_empty()
+            || self.drag_over_style.is_some()
             || self.tooltip_builder.is_some()
             || window.is_inspector_picking(cx)
     }
@@ -2457,7 +2847,14 @@ impl Interactivity {
             }
 
             let rem_size = window.rem_size();
-            let padding = style.padding.to_pixels(bounds.size.into(), rem_size);
+            // Taffy lays the box out with the padding snapped to the device pixel
+            // grid (`to_taffy`); recomputed unsnapped, e.g. py_1 at a fractional
+            // rem size, it exceeds `bounds` and leaves the box scrollable by the
+            // sub-pixel difference.
+            let padding = style
+                .padding
+                .to_pixels(bounds.size.into(), rem_size)
+                .map(|edge| window.pixel_snap(*edge));
             let padding_size = size(padding.left + padding.right, padding.top + padding.bottom);
             // The floating point values produced by Taffy and ours often vary
             // slightly after ~5 decimal places. This can lead to cases where after
@@ -2516,7 +2913,13 @@ impl Interactivity {
                 let mut element_state =
                     element_state.map(|element_state| element_state.unwrap_or_default());
 
-                let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
+                let style = self.compute_style_internal(
+                    hitbox,
+                    Some(bounds),
+                    element_state.as_mut(),
+                    window,
+                    cx,
+                );
 
                 #[cfg(any(feature = "test-support", test))]
                 if let Some(debug_selector) = &self.debug_selector {
@@ -2751,6 +3154,16 @@ impl Interactivity {
         }
     }
 
+    fn has_drag_over_styles(&self) -> bool {
+        self.drag_over_style.is_some() || {
+            // whether there is a drop listener which affects styling
+            self.drop_listeners
+                .iter()
+                .find(|(_, listener)| listener.on_drag_over.is_some())
+                .is_some()
+        }
+    }
+
     fn paint_mouse_listeners(
         &mut self,
         hitbox: &Hitbox,
@@ -2833,7 +3246,7 @@ impl Interactivity {
 
         if self.hover_style.is_some()
             || self.base_style.mouse_cursor.is_some()
-            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
+            || cx.active_drag.is_some() && self.has_drag_over_styles()
         {
             let hitbox = hitbox.clone();
             let hover_state = self.hover_style.as_ref().and_then(|_| {
@@ -2892,31 +3305,54 @@ impl Interactivity {
         if !drop_listeners.is_empty() {
             let hitbox = hitbox.clone();
             window.on_mouse_event({
-                move |_: &MouseUpEvent, phase, window, cx| {
-                    if let Some(drag) = &cx.active_drag
-                        && phase == DispatchPhase::Bubble
-                        && hitbox.is_hovered(window)
-                    {
-                        let drag_state_type = drag.value.as_ref().type_id();
-                        for (drop_state_type, listener) in &drop_listeners {
-                            if *drop_state_type == drag_state_type {
-                                let drag = cx
-                                    .active_drag
-                                    .take()
-                                    .expect("checked for type drag state type above");
+                move |evt: &MouseUpEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
 
-                                let mut can_drop = true;
-                                if let Some(predicate) = &can_drop_predicate {
-                                    can_drop = predicate(drag.value.as_ref(), window, cx);
-                                }
+                    let drag_value = match cx.active_drag() {
+                        None => return,
+                        Some(drag) => drag.value.clone(),
+                    };
 
-                                if can_drop {
-                                    listener(drag.value.as_ref(), window, cx);
-                                    window.refresh();
-                                    cx.stop_propagation();
-                                }
+                    // Testing whether the element will be able to receive, regardless of if its hitbox is hovered.
+                    // Elements that override this can check if the hitbox is hovered, manually (or via interactivity api).
+                    if let Some(predicate) = &can_drop_predicate {
+                        if !predicate(drag_value.as_ref(), &hitbox, window, cx) {
+                            return;
+                        }
+                    }
+
+                    let drag_state_type = drag_value.as_ref().type_id();
+                    for (recv_drop_type, listener) in &drop_listeners {
+                        if *recv_drop_type != drag_state_type {
+                            continue;
+                        }
+
+                        // Test whether the DropListener api can receive the payload
+                        // (which may or may not test the hitbox being hovered).
+                        if let Some(predicate) = &listener.can_drop {
+                            if !predicate(drag_value.as_ref(), &hitbox, window, cx) {
+                                continue;
                             }
                         }
+                        // Finally, if the element does override can_drop and the listener doesn't,
+                        // then we only still permit drop here if the hitbox is hovered.
+                        // This allows both previous predicates to override this check if they see fit
+                        // (or implement it manually or via interactivity).
+                        else if !hitbox.is_hovered(window) {
+                            continue;
+                        }
+
+                        let drag_value =
+                            cx.stop_drag(window).expect("already confirmed drag exists");
+
+                        if let Some(predicate) = &listener.on_drop {
+                            predicate(drag_value.as_ref(), evt, window, cx);
+                        }
+                        window.refresh();
+                        cx.stop_propagation();
+                        break;
                     }
                 }
             });
@@ -2961,40 +3397,25 @@ impl Interactivity {
                     let pending_mouse_down = pending_mouse_down.clone();
                     let hitbox = hitbox.clone();
                     move |event: &MouseMoveEvent, phase, window, cx| {
-                        if phase == DispatchPhase::Capture {
+                        if phase == DispatchPhase::Capture || drag_listener.is_none() {
                             return;
                         }
 
                         let mut pending_mouse_down = pending_mouse_down.borrow_mut();
-                        if let Some(mouse_down) = pending_mouse_down.clone()
-                            && !cx.has_active_drag()
-                            && (event.position - mouse_down.position).magnitude() > DRAG_THRESHOLD
-                            && let Some(listener) = drag_listener.take()
-                            && mouse_down.button == MouseButton::Left
-                        {
+                        let Some(mouse_down) = pending_mouse_down.clone() else {
+                            return;
+                        };
+                        if cx.has_active_drag() || mouse_down.button != MouseButton::Left {
+                            return;
+                        }
+                        if (event.position - mouse_down.position).magnitude() <= DRAG_THRESHOLD {
+                            return;
+                        }
+                        if let Some(listener) = drag_listener.take() {
                             *clicked_state.borrow_mut() = ElementClickedState::default();
                             let cursor_offset = event.position - hitbox.origin;
-                            let drag = (listener.render)(
-                                listener.value.as_ref(),
-                                cursor_offset,
-                                window,
-                                cx,
-                            );
-                            let external_payload_source =
-                                listener.external_payload.map(|external_payload| {
-                                    let value = listener.value.clone();
-                                    Box::new(move |window: &mut Window, cx: &mut App| {
-                                        external_payload(value.as_ref(), window, cx)
-                                    })
-                                        as ExternalDragPayloadSource
-                                });
-                            cx.active_drag = Some(AnyDrag {
-                                view: drag,
-                                value: listener.value,
-                                cursor_offset,
-                                cursor_style: drag_cursor_style,
-                                external_payload_source,
-                            });
+                            let drag = listener(cursor_offset, drag_cursor_style, window, cx);
+                            cx.start_drag(drag);
                             pending_mouse_down.take();
                             window.refresh();
                             cx.stop_propagation();
@@ -3129,8 +3550,9 @@ impl Interactivity {
                     .get_or_insert_with(Default::default)
                     .clone();
                 let hover_listeners = self.hover_listeners.clone();
+                let hover_listener_state = was_hovered.clone();
                 let update_hover = move |is_hovered: bool, window: &mut Window, cx: &mut App| {
-                    let mut was_hovered = was_hovered.borrow_mut();
+                    let mut was_hovered = hover_listener_state.borrow_mut();
                     if is_hovered != *was_hovered {
                         *was_hovered = is_hovered;
                         drop(was_hovered);
@@ -3139,6 +3561,16 @@ impl Interactivity {
                         }
                     }
                 };
+
+                if has_mouse_down.borrow().is_none() {
+                    let is_hovered = !cx.has_active_drag() && hitbox.is_hovered(window);
+                    if is_hovered != *was_hovered.borrow() {
+                        let update_hover = update_hover.clone();
+                        window.defer(cx, move |window, cx| {
+                            update_hover(is_hovered, window, cx);
+                        });
+                    }
+                }
 
                 window.on_mouse_event({
                     let update_hover = update_hover.clone();
@@ -3370,7 +3802,13 @@ impl Interactivity {
         window.with_optional_element_state(global_id, |element_state, window| {
             let mut element_state =
                 element_state.map(|element_state| element_state.unwrap_or_default());
-            let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
+            let style = self.compute_style_internal(
+                hitbox,
+                hitbox.map(|hitbox| hitbox.bounds),
+                element_state.as_mut(),
+                window,
+                cx,
+            );
             (style, element_state)
         })
     }
@@ -3379,7 +3817,8 @@ impl Interactivity {
     fn compute_style_internal(
         &self,
         hitbox: Option<&Hitbox>,
-        element_state: Option<&mut InteractiveElementState>,
+        bounds: Option<Bounds<Pixels>>,
+        mut element_state: Option<&mut InteractiveElementState>,
         window: &mut Window,
         cx: &mut App,
     ) -> Style {
@@ -3411,13 +3850,12 @@ impl Interactivity {
             if let Some(group_hover) = self.group_hover_style.as_ref() {
                 let is_group_hovered =
                     if let Some(group_hitbox_id) = GroupHitboxes::get(&group_hover.group, cx) {
-                        group_hitbox_id.is_hovered(window)
+                        !window.last_input_was_touch() && group_hitbox_id.is_hovered(window)
                     } else if let Some(element_state) = element_state.as_ref() {
                         element_state
                             .hover_state
                             .as_ref()
-                            .map(|state| state.borrow().group)
-                            .unwrap_or(false)
+                            .is_some_and(|state| state.borrow().group_is_active(window))
                     } else {
                         false
                     };
@@ -3429,13 +3867,12 @@ impl Interactivity {
 
             if let Some(hover_style) = self.hover_style.as_ref() {
                 let is_hovered = if let Some(hitbox) = hitbox {
-                    hitbox.is_hovered(window)
+                    !window.last_input_was_touch() && hitbox.is_hovered(window)
                 } else if let Some(element_state) = element_state.as_ref() {
                     element_state
                         .hover_state
                         .as_ref()
-                        .map(|state| state.borrow().element)
-                        .unwrap_or(false)
+                        .is_some_and(|state| state.borrow().element_is_active(window))
                 } else {
                     false
                 };
@@ -3448,12 +3885,31 @@ impl Interactivity {
 
         if let Some(hitbox) = hitbox {
             if let Some(drag) = cx.active_drag.take() {
-                let mut can_drop = true;
-                if let Some(can_drop_predicate) = &self.can_drop_predicate {
-                    can_drop = can_drop_predicate(drag.value.as_ref(), window, cx);
-                }
+                let drag_state_type = drag.value.as_ref().type_id();
+                let can_drop_without_listener = self
+                    .can_drop_predicate
+                    .as_ref()
+                    .map(|predicate| predicate(drag.value.as_ref(), hitbox, window, cx))
+                    .unwrap_or(true);
+                let relevant_drop_listener = match can_drop_without_listener {
+                    false => None,
+                    true => {
+                        let mut iter = self.drop_listeners.iter();
+                        iter.find(|(drop_state_type, listener)| {
+                            if *drop_state_type != drag_state_type {
+                                return false;
+                            }
 
-                if can_drop {
+                            let mut can_drop = true;
+                            if let Some(predicate) = &listener.can_drop {
+                                can_drop = predicate(drag.value.as_ref(), hitbox, window, cx);
+                            }
+                            can_drop
+                        })
+                    }
+                };
+
+                if let Some((_, drop_listener)) = relevant_drop_listener {
                     for (state_type, group_drag_style) in &self.group_drag_over_styles {
                         if let Some(group_hitbox_id) =
                             GroupHitboxes::get(&group_drag_style.group, cx)
@@ -3464,10 +3920,12 @@ impl Interactivity {
                         }
                     }
 
-                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
-                        if *state_type == drag.value.as_ref().type_id() && hitbox.is_hovered(window)
-                        {
-                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
+                    if hitbox.is_hovered(window) {
+                        if let Some(drag_over) = &self.drag_over_style {
+                            style.refine(&drag_over(drag.value.as_ref(), window, cx));
+                        }
+                        if let Some(drag_over) = &drop_listener.on_drag_over {
+                            style.refine(&drag_over(drag.value.as_ref(), window, cx));
                         }
                     }
                 }
@@ -3477,7 +3935,7 @@ impl Interactivity {
             }
         }
 
-        if let Some(element_state) = element_state {
+        if let Some(element_state) = element_state.as_deref_mut() {
             let clicked_state = element_state
                 .clicked_state
                 .get_or_insert_with(Default::default)
@@ -3495,10 +3953,32 @@ impl Interactivity {
             }
         }
 
+        if let Some(element_state) = element_state {
+            if let Some(transitions) = self.style_transitions.as_ref() {
+                if transitions.apply(
+                    &mut style,
+                    element_state
+                        .style_transitions
+                        .get_or_insert_with(Default::default),
+                    StyleTransitionContext::new(bounds, window.rem_size())
+                        .with_containing_bounds(window.style_transition_containing_bounds()),
+                    cx.background_executor().now(),
+                    cx.reduce_motion(),
+                ) {
+                    window.request_animation_frame();
+                }
+            } else {
+                element_state.style_transitions = None;
+            }
+        }
+
         style
     }
 
     pub(crate) fn write_a11y_info(&self, node: &mut accesskit::Node) {
+        if let Some(id) = &self.aria.author_id {
+            node.set_author_id(id.to_string());
+        }
         if let Some(label) = &self.aria.label {
             node.set_label(label.to_string());
         }
@@ -3516,6 +3996,13 @@ impl Interactivity {
         }
         if let Some(toggled) = self.aria.toggled {
             node.set_toggled(toggled);
+        }
+        if let Some(disabled) = self.aria.disabled {
+            if disabled {
+                node.set_disabled();
+            } else {
+                node.clear_disabled();
+            }
         }
         if let Some(value) = self.aria.numeric_value {
             node.set_numeric_value(value);
@@ -3559,6 +4046,23 @@ impl Interactivity {
         if let Some(count) = self.aria.column_count {
             node.set_column_count(count);
         }
+        if let Some(modal) = self.aria.modal {
+            if modal {
+                node.set_modal();
+            } else {
+                node.clear_modal();
+            }
+        }
+        if let Some(live) = self.aria.live {
+            node.set_live(live);
+        }
+        if let Some(atomic) = self.aria.live_atomic {
+            if atomic {
+                node.set_live_atomic();
+            } else {
+                node.clear_live_atomic();
+            }
+        }
         if !self.click_listeners.is_empty() {
             node.add_action(accesskit::Action::Click);
         }
@@ -3591,6 +4095,7 @@ pub struct InteractiveElementState {
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) active_tooltip: Option<Rc<RefCell<Option<ActiveTooltip>>>>,
+    pub(crate) style_transitions: Option<Box<StyleTransitionState>>,
 }
 
 /// Whether or not the element or a group that contains it is clicked by the mouse.
@@ -3617,6 +4122,16 @@ pub struct ElementHoverState {
 
     /// True if this element is hovered, false otherwise
     pub element: bool,
+}
+
+impl ElementHoverState {
+    fn group_is_active(&self, window: &Window) -> bool {
+        self.group && !window.last_input_was_keyboard() && !window.last_input_was_touch()
+    }
+
+    fn element_is_active(&self, window: &Window) -> bool {
+        self.element && !window.last_input_was_keyboard() && !window.last_input_was_touch()
+    }
 }
 
 pub(crate) enum ActiveTooltip {
@@ -3941,6 +4456,7 @@ fn handle_tooltip_check_visible_and_update(
     active_tooltip.borrow().is_some()
 }
 
+/// Temporary cache of hitbox groups, written and read from during paint recursion.
 #[derive(Default)]
 pub(crate) struct GroupHitboxes(HashMap<SharedString, SmallVec<[HitboxId; 1]>>);
 
@@ -4010,6 +4526,10 @@ where
 
     fn a11y_role(&self) -> Option<accesskit::Role> {
         self.element.a11y_role()
+    }
+
+    fn is_a11y_hidden(&self) -> bool {
+        self.element.is_a11y_hidden()
     }
 
     fn write_a11y_info(&self, node: &mut accesskit::Node) {
@@ -4443,6 +4963,123 @@ mod tests {
         assert_eq!(stateful_width.get(), px(10.));
     }
 
+    struct HoverListenerLayoutTestView {
+        target_left: Pixels,
+        hover_transitions: Rc<RefCell<Vec<bool>>>,
+    }
+
+    impl Render for HoverListenerLayoutTestView {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let hover_transitions = self.hover_transitions.clone();
+            div().relative().size_full().child(
+                div()
+                    .id("hover-target")
+                    .absolute()
+                    .left(self.target_left)
+                    .top_0()
+                    .size(px(20.))
+                    .on_click(|_, _, _| {})
+                    .on_hover(move |is_hovered, _, _| {
+                        hover_transitions.borrow_mut().push(*is_hovered);
+                    }),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn hover_listeners_update_when_layout_changes_under_stationary_mouse(cx: &mut TestAppContext) {
+        let hover_transitions = Rc::new(RefCell::new(Vec::new()));
+        let window = cx.add_window({
+            let hover_transitions = hover_transitions.clone();
+            move |_, _| HoverListenerLayoutTestView {
+                target_left: px(40.),
+                hover_transitions,
+            }
+        });
+        let any_window = AnyWindowHandle::from(window);
+
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.simulate_mouse_move(point(px(10.), px(10.)), cx);
+        })
+        .unwrap();
+        assert!(hover_transitions.borrow().is_empty());
+
+        window
+            .update(cx, |view, _, cx| {
+                view.target_left = px(0.);
+                cx.notify();
+            })
+            .unwrap();
+        cx.update_window(any_window, |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        assert_eq!(*hover_transitions.borrow(), [true]);
+
+        window
+            .update(cx, |view, _, cx| {
+                view.target_left = px(40.);
+                cx.notify();
+            })
+            .unwrap();
+        cx.update_window(any_window, |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+        assert_eq!(*hover_transitions.borrow(), [true, false]);
+    }
+
+    #[gpui::test]
+    fn hover_listeners_remain_hovered_during_stationary_mouse_press(cx: &mut TestAppContext) {
+        let hover_transitions = Rc::new(RefCell::new(Vec::new()));
+        let window = cx.add_window({
+            let hover_transitions = hover_transitions.clone();
+            move |_, _| HoverListenerLayoutTestView {
+                target_left: px(0.),
+                hover_transitions,
+            }
+        });
+        let any_window = AnyWindowHandle::from(window);
+        let mouse_position = point(px(10.), px(10.));
+
+        cx.update_window(any_window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+            window.simulate_mouse_move(mouse_position, cx);
+        })
+        .unwrap();
+        assert_eq!(*hover_transitions.borrow(), [true]);
+
+        cx.update_window(any_window, |_, window, cx| {
+            window.dispatch_event(
+                MouseDownEvent {
+                    position: mouse_position,
+                    button: MouseButton::Left,
+                    modifiers: Default::default(),
+                    click_count: 1,
+                    first_mouse: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        assert_eq!(*hover_transitions.borrow(), [true]);
+
+        cx.update_window(any_window, |_, window, cx| {
+            window.dispatch_event(
+                MouseUpEvent {
+                    position: mouse_position,
+                    button: MouseButton::Left,
+                    modifiers: Default::default(),
+                    click_count: 1,
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        assert_eq!(*hover_transitions.borrow(), [true]);
+    }
+
     struct TestTooltipView;
 
     impl Render for TestTooltipView {
@@ -4831,8 +5468,21 @@ mod tests {
     }
 
     #[test]
+    fn test_accessibility_id_builder_writes_author_id() {
+        let mut element = div()
+            .id("buffer-font-size")
+            .accessibility_id("settings.buffer-font-size");
+        let mut node = accesskit::Node::new(accesskit::Role::SpinButton);
+
+        element.interactivity().write_a11y_info(&mut node);
+
+        assert_eq!(node.author_id(), Some("settings.buffer-font-size"));
+    }
+
+    #[test]
     fn test_write_a11y_info_string_and_numeric_properties() {
         let mut interactivity = Interactivity::default();
+        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
         interactivity.aria.label = Some("Buffer Font Size".into());
         interactivity.aria.value = Some("15".into());
         interactivity.aria.placeholder = Some("Search".into());
@@ -4844,6 +5494,7 @@ mod tests {
         let mut node = accesskit::Node::new(accesskit::Role::SpinButton);
         interactivity.write_a11y_info(&mut node);
 
+        assert_eq!(node.author_id(), Some("settings.buffer-font-size"));
         assert_eq!(node.label(), Some("Buffer Font Size"));
         assert_eq!(node.value(), Some("15"));
         assert_eq!(node.placeholder(), Some("Search"));
@@ -4851,6 +5502,46 @@ mod tests {
         assert_eq!(node.min_numeric_value(), Some(6.0));
         assert_eq!(node.max_numeric_value(), Some(72.0));
         assert_eq!(node.numeric_value_step(), Some(1.0));
+    }
+
+    #[test]
+    fn test_write_a11y_info_disabled_modal_and_live_region() {
+        let mut interactivity = Interactivity::default();
+        interactivity.aria.disabled = Some(true);
+        interactivity.aria.modal = Some(true);
+        interactivity.aria.live = Some(accesskit::Live::Assertive);
+        interactivity.aria.live_atomic = Some(true);
+
+        let mut node = accesskit::Node::new(accesskit::Role::Dialog);
+        interactivity.write_a11y_info(&mut node);
+
+        assert!(node.is_disabled());
+        assert!(node.is_modal());
+        assert_eq!(node.live(), Some(accesskit::Live::Assertive));
+        assert!(node.is_live_atomic());
+    }
+
+    #[test]
+    fn test_write_a11y_info_disabled_and_modal_false_clear_the_flags() {
+        // `Some(false)` must explicitly clear a flag-style AccessKit property,
+        // not merely leave it at its (already-cleared) default: a caller that
+        // re-renders a node from a previous state relies on `Some(false)`
+        // overriding a flag that a prior frame set to `true`.
+        let mut interactivity = Interactivity::default();
+        interactivity.aria.disabled = Some(false);
+        interactivity.aria.modal = Some(false);
+        interactivity.aria.live_atomic = Some(false);
+
+        let mut node = accesskit::Node::new(accesskit::Role::Dialog);
+        node.set_disabled();
+        node.set_modal();
+        node.set_live_atomic();
+
+        interactivity.write_a11y_info(&mut node);
+
+        assert!(!node.is_disabled());
+        assert!(!node.is_modal());
+        assert!(!node.is_live_atomic());
     }
 
     /// Two focusable, clickable elements ("a" and "b") used to exercise the
@@ -5121,5 +5812,86 @@ mod tests {
             .unwrap();
 
         assert_eq!(focused, Some(item_b.id));
+    }
+
+    #[gpui::test]
+    fn test_fractional_padding_does_not_make_a_fitting_container_scrollable(
+        cx: &mut TestAppContext,
+    ) {
+        struct PaddedContainer {
+            scroll_handle: ScrollHandle,
+        }
+
+        impl Render for PaddedContainer {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                // 4.25px of padding snaps to 4px in layout, so a 42px child
+                // fits the 50px box exactly.
+                div().size_full().child(
+                    div()
+                        .id("container")
+                        .h(px(50.))
+                        .w(px(100.))
+                        .py(px(4.25))
+                        .overflow_y_scroll()
+                        .track_scroll(&self.scroll_handle)
+                        .child(div().w_full().h(px(42.))),
+                )
+            }
+        }
+
+        let scroll_handle = ScrollHandle::new();
+        let window: AnyWindowHandle = cx
+            .add_window({
+                let scroll_handle = scroll_handle.clone();
+                move |_, _| PaddedContainer { scroll_handle }
+            })
+            .into();
+        cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+
+        assert_eq!(scroll_handle.max_offset().y, px(0.));
+    }
+
+    struct ContentSizedGrid;
+
+    impl Render for ContentSizedGrid {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let widths = [px(100.), px(200.), px(50.)];
+            div().size_full().child(
+                div()
+                    .w_full()
+                    .grid()
+                    .grid_cols_max_content(widths.len() as u16)
+                    .children(widths.into_iter().enumerate().map(|(index, width)| {
+                        div()
+                            .debug_selector(move || format!("cell-{index}"))
+                            .w(width)
+                            .h(px(10.))
+                    })),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn grid_cols_max_content_sizes_columns_to_their_content(cx: &mut TestAppContext) {
+        let window = cx.add_window(|_, _| ContentSizedGrid);
+        cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
+            .unwrap();
+
+        let mut bounds = |selector: &'static str| {
+            cx.update_window(window.into(), |_, window, _| {
+                window.rendered_frame.debug_bounds.get(selector).copied()
+            })
+            .unwrap()
+            .unwrap_or_else(|| panic!("{selector} was not rendered"))
+        };
+
+        assert_eq!(bounds("cell-0").origin.x, px(0.));
+        assert_eq!(bounds("cell-1").origin.x, px(100.));
+        assert_eq!(bounds("cell-2").origin.x, px(300.));
     }
 }

@@ -275,6 +275,7 @@ pub struct X11WindowState {
     background_appearance: WindowBackgroundAppearance,
     maximized_vertical: bool,
     maximized_horizontal: bool,
+    visible: bool,
     hidden: bool,
     /// MDRV: focus intent from `activate()` that could not land yet because
     /// the window was still unmapped (e.g. re-activating out of an iconic
@@ -391,6 +392,39 @@ where
         .map_err(handle_connection_error)
         .and_then(|response| response.reply().map_err(|reply_error| anyhow!(reply_error)))
         .with_context(failure_context)
+}
+
+/// Sets or clears the ICCCM WM_HINTS urgency flag, preserving the other hints.
+///
+/// Clearing when the flag isn't set is skipped: writing it back would create a
+/// WM_HINTS property on windows that never requested attention, and would add an
+/// X round trip to every window state change.
+fn set_wm_hints_urgency(xcb: &XCBConnection, x_window: xproto::Window, urgent: bool) {
+    let mut hints = WmHints::new();
+    match WmHints::get(xcb, x_window) {
+        Ok(cookie) => match cookie.reply() {
+            Ok(Some(existing_hints)) => hints = existing_hints,
+            Ok(None) => {}
+            Err(error) => {
+                log::debug!("failed to read X11 WM_HINTS before setting urgency: {error}")
+            }
+        },
+        Err(error) => {
+            log::debug!("failed to request X11 WM_HINTS before setting urgency: {error}")
+        }
+    }
+
+    if !urgent && !hints.urgent {
+        return;
+    }
+
+    hints.urgent = urgent;
+    check_reply(
+        || "X11 ChangeProperty for WM_HINTS urgency failed.",
+        hints.set(xcb, x_window),
+    )
+    .log_err();
+    xcb_flush(xcb);
 }
 
 /// Convert X11 connection errors to `anyhow::Error` and panic for unrecoverable errors.
@@ -810,6 +844,7 @@ impl X11WindowState {
                 fullscreen: false,
                 maximized_vertical: false,
                 maximized_horizontal: false,
+                visible: params.show,
                 hidden: false,
                 focus_requested: false,
                 appearance,
@@ -1094,6 +1129,7 @@ impl X11WindowStatePtr {
             .chunks_exact(4)
             .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
 
+        let was_active = state.active;
         state.active = false;
         state.fullscreen = false;
         state.maximized_vertical = false;
@@ -1112,6 +1148,12 @@ impl X11WindowStatePtr {
             } else if atom == state.atoms._NET_WM_STATE_HIDDEN {
                 state.hidden = true;
             }
+        }
+
+        // The urgency hint has no withdrawal signal of its own; ICCCM leaves that to
+        // the client, and focus is the conventional means for the user to zero it.
+        if state.active && !was_active {
+            set_wm_hints_urgency(&self.xcb, self.x_window, false);
         }
 
         Ok(())
@@ -1517,26 +1559,7 @@ impl PlatformWindow for X11Window {
             return;
         }
 
-        let mut hints = WmHints::new();
-        match WmHints::get(&*self.0.xcb, self.0.x_window) {
-            Ok(cookie) => match cookie.reply() {
-                Ok(Some(existing_hints)) => hints = existing_hints,
-                Ok(None) => {}
-                Err(error) => {
-                    log::debug!("failed to read X11 WM_HINTS before setting urgency: {error}")
-                }
-            },
-            Err(error) => {
-                log::debug!("failed to request X11 WM_HINTS before setting urgency: {error}")
-            }
-        }
-        hints.urgent = true;
-        check_reply(
-            || "X11 ChangeProperty for WM_HINTS urgency failed.",
-            hints.set(&*self.0.xcb, self.0.x_window),
-        )
-        .log_err();
-        xcb_flush(&self.0.xcb);
+        set_wm_hints_urgency(&self.0.xcb, self.0.x_window, true);
     }
 
     fn is_active(&self) -> bool {
@@ -1575,10 +1598,11 @@ impl PlatformWindow for X11Window {
     }
 
     fn set_app_id(&mut self, app_id: &str) {
-        let mut data = Vec::with_capacity(app_id.len() * 2 + 1);
+        let mut data = Vec::with_capacity(app_id.len() * 2 + 2);
         data.extend(app_id.bytes()); // instance https://unix.stackexchange.com/a/494170
         data.push(b'\0');
         data.extend(app_id.bytes()); // class
+        data.push(b'\0');
 
         check_reply(
             || "X11 ChangeProperty8 for WM_CLASS failed.",
@@ -1594,10 +1618,12 @@ impl PlatformWindow for X11Window {
     }
 
     fn map_window(&mut self) -> anyhow::Result<()> {
-        check_reply(
-            || "X11 MapWindow failed.",
-            self.0.xcb.map_window(self.0.x_window),
-        )?;
+        if self.0.state.borrow().visible {
+            check_reply(
+                || "X11 MapWindow failed.",
+                self.0.xcb.map_window(self.0.x_window),
+            )?;
+        }
         Ok(())
     }
 
@@ -1610,6 +1636,33 @@ impl PlatformWindow for X11Window {
 
     fn background_appearance(&self) -> WindowBackgroundAppearance {
         self.0.state.borrow().background_appearance
+    }
+
+    fn set_visible(&self, visible: bool) {
+        let mut state = self.0.state.borrow_mut();
+        if state.visible == visible {
+            return;
+        }
+        state.visible = visible;
+        drop(state);
+
+        let result = if visible {
+            self.0.xcb.map_window(self.0.x_window)
+        } else {
+            self.0.xcb.unmap_window(self.0.x_window)
+        };
+        check_reply(
+            || {
+                if visible {
+                    "X11 MapWindow failed."
+                } else {
+                    "X11 UnmapWindow failed."
+                }
+            },
+            result,
+        )
+        .log_err();
+        xcb_flush(&self.0.xcb);
     }
 
     fn is_subpixel_rendering_supported(&self) -> bool {
@@ -1951,6 +2004,15 @@ impl PlatformWindow for X11Window {
     fn gpu_context(&self) -> Option<Box<dyn std::any::Any>> {
         let (device, queue) = self.0.state.borrow().renderer.gpu_context();
         Some(Box::new((device, queue)))
+    }
+
+    fn gpu_context_info(&self) -> Option<Box<dyn std::any::Any>> {
+        self.0
+            .state
+            .borrow()
+            .renderer
+            .gpu_context_info()
+            .map(|context| Box::new(context) as Box<dyn std::any::Any>)
     }
 
     fn gpu_device_lost(&self) -> Option<bool> {
