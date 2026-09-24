@@ -45,8 +45,29 @@ Upstream renamed the packages: `crates/gpui` is package **`gpui-ce`**
 therefore need `package=` keys:
 
     [dependencies]
-    gpui = { path = "/g/gpui-ce/crates/gpui", package = "gpui-ce" }
-    gpui_platform = { path = "/g/gpui-ce/crates/gpui_platform", package = "gpui_ce_platform", features = ["wayland", "x11"] }
+    gpui = { path = "/g/gpui-ce/crates/gpui", package = "mdrv-gpui-ce" }
+    gpui_platform = { path = "/g/gpui-ce/crates/gpui_platform", package = "mdrv-gpui-platform", features = ["wayland", "x11"] }
+
+## Registry / portability (2026-09-25)
+
+Eleven support leaves are published to crates.io as
+`mdrv-gpui-{derive-refineable,macros,media,path,refineable,util,collections,sum-tree,scheduler,shared-string,zed-util}`
+@ `0.0.260925` (squat-secured). The core family is **not**
+registry-publishable — same as upstream, whose `gpui_ce_render`/`gpui_ce_platform`
+are 404 on the index despite `publish = true`: `wgsl-rs` is a git dep
+(taints render/apple/wgpu/windows), platform depends on those, and
+gpui-ce dev-depends on platform (41 examples). Portability policy is
+**git tags** instead:
+
+    [dependencies]
+    gpui = { package = "mdrv-gpui-ce", git = "https://github.com/mdrv/gpui-ce", tag = "mdrv-gpui-0.0.260925" }
+    gpui_platform = { package = "mdrv-gpui-platform", git = "https://github.com/mdrv/gpui-ce", tag = "mdrv-gpui-0.0.260925", features = ["wayland"] }
+
+    [patch.crates-io]
+    arrayref = { git = "https://github.com/mdrv/gpui-ce" }
+
+Tag per release as `mdrv-gpui-0.0.<version>`; `vendor/arrayref` is a
+workspace member since `55d7e50751` so the git-form patch resolves.
 
 Full sync procedure: `/x/m/v270/gpui/gpui-ce-sync.md`.
 
