@@ -23,6 +23,7 @@ members = [
   "./crates/gpui_ce_util/",
   "./crates/gpui_path/",
   "./tooling/perf/",
+  "./vendor/arrayref/",
 ]
 default-members = ["./crates/gpui/"]
 resolver = "3"
