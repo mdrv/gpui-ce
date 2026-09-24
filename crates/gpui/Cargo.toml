@@ -1,6 +1,6 @@
 [package]
-name = "gpui-ce"
-version = "0.2.2"
+name = "mdrv-gpui-ce"
+version = "0.0.260925"
 edition.workspace = true
 authors = ["Nathan Sobo <nathan@zed.dev>"]
 description = "A community fork of Zed's GPU-accelerated UI framework"

@@ -1,6 +1,6 @@
 [package]
-name = "gpui_ce_web"
-version = "0.1.0"
+name = "mdrv-gpui-web"
+version = "0.0.260925"
 description.workspace = true
 publish.workspace = true
 edition.workspace = true

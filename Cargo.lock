@@ -2281,498 +2281,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui-ce"
-version = "0.2.2"
-dependencies = [
- "accesskit",
- "accesskit_consumer 0.38.0",
- "anyhow",
- "async-channel",
- "async-task",
- "backtrace",
- "bindgen",
- "bitflags 2.13.1",
- "chrono",
- "core-text",
- "core-video",
- "criterion",
- "ctor",
- "derive_more",
- "embed-resource",
- "env_logger",
- "etagere",
- "foreign-types",
- "futures",
- "futures-concurrency",
- "getrandom 0.3.4",
- "gpui_ce_collections",
- "gpui_ce_macros",
- "gpui_ce_platform",
- "gpui_ce_refineable",
- "gpui_ce_scheduler",
- "gpui_ce_shared_string",
- "gpui_ce_sum_tree",
- "gpui_ce_util",
- "hdrhistogram",
- "heapless",
- "http",
- "image",
- "inventory",
- "itertools 0.14.0",
- "log",
- "lyon",
- "num_cpus",
- "objc2 0.6.4",
- "objc2-metal 0.3.2",
- "palette",
- "parking",
- "parking_lot",
- "pin-project",
- "pollster 0.4.0",
- "postage",
- "profiling",
- "proptest",
- "rand",
- "raw-window-handle",
- "regex",
- "resvg",
- "rust-embed",
- "schemars",
- "seahash",
- "serde",
- "serde_json",
- "skrifa 0.46.2",
- "slotmap",
- "smallvec",
- "smol",
- "spin 0.10.1",
- "stacksafe",
- "strum 0.27.2",
- "taffy",
- "thiserror 2.0.20",
- "tracing",
- "unicode-segmentation",
- "url",
- "usvg",
- "uuid",
- "waker-fn",
- "wasm-bindgen",
- "web-sys",
- "web-time",
- "windows 0.61.3",
- "windows 0.62.2",
- "windows-capture",
- "zed-font-kit",
-]
-
-[[package]]
-name = "gpui_ce_apple"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "block",
- "core-foundation",
- "core-graphics",
- "core-video",
- "derive_more",
- "etagere",
- "foreign-types",
- "gpui-ce",
- "gpui_ce_collections",
- "gpui_ce_render",
- "image",
- "log",
- "metal",
- "objc2 0.6.4",
- "objc2-quartz-core 0.3.2",
- "parking_lot",
- "smallvec",
- "wgsl-rs",
-]
-
-[[package]]
-name = "gpui_ce_collections"
-version = "0.2.2"
-dependencies = [
- "gpui_ce_util",
- "indexmap",
- "rustc-hash 2.1.3",
-]
-
-[[package]]
-name = "gpui_ce_derive_refineable"
-version = "0.2.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "gpui_ce_elements"
-version = "0.1.0"
-dependencies = [
- "gpui-ce",
- "gpui_ce_platform",
- "palette",
- "smallvec",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "gpui_ce_linux"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "accesskit_unix",
- "anyhow",
- "as-raw-xcb-connection",
- "ashpd",
- "bitflags 2.13.1",
- "bytemuck",
- "calloop",
- "calloop-wayland-source",
- "filedescriptor",
- "futures",
- "gpui-ce",
- "gpui_ce_collections",
- "gpui_ce_util",
- "gpui_ce_wgpu",
- "image",
- "itertools 0.14.0",
- "libc",
- "log",
- "memfd",
- "notify-rust",
- "oo7",
- "open",
- "parking_lot",
- "raw-window-handle",
- "smallvec",
- "smol",
- "strum 0.27.2",
- "url",
- "uuid",
- "wayland-backend",
- "wayland-client",
- "wayland-cursor",
- "wayland-protocols",
- "wayland-protocols-plasma",
- "wayland-protocols-wlr",
- "x11-clipboard",
- "x11rb",
- "xkbcommon",
- "zed-xim",
-]
-
-[[package]]
-name = "gpui_ce_macos"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "accesskit_macos",
- "anyhow",
- "async-task",
- "block",
- "block2 0.6.2",
- "core-foundation",
- "core-foundation-sys",
- "core-graphics",
- "core-text",
- "core-video",
- "ctor",
- "dispatch2",
- "etagere",
- "foreign-types",
- "futures",
- "gpui-ce",
- "gpui_ce_apple",
- "gpui_ce_collections",
- "gpui_ce_media",
- "gpui_ce_util",
- "image",
- "itertools 0.14.0",
- "libc",
- "log",
- "mach2",
- "metal",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-core-media",
- "objc2-foundation 0.3.2",
- "objc2-screen-capture-kit",
- "objc2-user-notifications",
- "palette",
- "parking_lot",
- "pathfinder_geometry",
- "raw-window-handle",
- "semver",
- "smallvec",
- "strum 0.27.2",
- "url",
- "uuid",
- "zed-font-kit",
-]
-
-[[package]]
-name = "gpui_ce_macros"
-version = "0.1.0"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "gpui_ce_media"
-version = "0.2.2"
-dependencies = [
- "anyhow",
- "bindgen",
- "core-foundation",
- "core-video",
- "foreign-types",
- "metal",
- "objc",
-]
-
-[[package]]
-name = "gpui_ce_path"
-version = "0.2.2"
-dependencies = [
- "anyhow",
- "dunce",
- "pretty_assertions",
- "serde",
- "tempfile",
-]
-
-[[package]]
-name = "gpui_ce_platform"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "gpui-ce",
- "gpui_ce_apple",
- "gpui_ce_linux",
- "gpui_ce_macos",
- "gpui_ce_web",
- "gpui_ce_windows",
-]
-
-[[package]]
-name = "gpui_ce_refineable"
-version = "0.2.2"
-dependencies = [
- "gpui_ce_derive_refineable",
-]
-
-[[package]]
-name = "gpui_ce_render"
-version = "0.1.0"
-dependencies = [
- "gpui-ce",
- "naga 24.0.0",
- "naga 29.0.4",
- "wgsl-rs",
- "windows 0.62.2",
-]
-
-[[package]]
-name = "gpui_ce_scheduler"
-version = "0.2.2"
-dependencies = [
- "async-task",
- "backtrace",
- "chrono",
- "flume",
- "futures",
- "parking_lot",
- "rand",
- "wasm_thread 0.3.3 (git+https://github.com/zed-industries/wasm_thread?rev=0cf96c7708dfb97ccf3da50347e25edcf75d6937)",
- "web-time",
-]
-
-[[package]]
-name = "gpui_ce_shared_string"
-version = "0.1.0"
-dependencies = [
- "schemars",
- "serde",
- "smol_str",
-]
-
-[[package]]
-name = "gpui_ce_sum_tree"
-version = "0.2.2"
-dependencies = [
- "heapless",
- "log",
- "proptest",
- "rand",
- "rayon",
- "tracing",
-]
-
-[[package]]
-name = "gpui_ce_tokio"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "gpui-ce",
- "gpui_ce_util",
- "tokio",
-]
-
-[[package]]
-name = "gpui_ce_util"
-version = "0.2.6"
-dependencies = [
- "anyhow",
- "log",
- "which",
-]
-
-[[package]]
-name = "gpui_ce_web"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "console_error_panic_hook",
- "futures",
- "gpui-ce",
- "gpui_ce_scheduler",
- "gpui_ce_wgpu",
- "http",
- "js-sys",
- "log",
- "parking_lot",
- "raw-window-handle",
- "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm_thread 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "web-sys",
- "web-time",
-]
-
-[[package]]
-name = "gpui_ce_wgpu"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "core-foundation",
- "core-video",
- "cosmic-text",
- "criterion",
- "env_logger",
- "etagere",
- "gpui-ce",
- "gpui_ce_collections",
- "gpui_ce_platform",
- "gpui_ce_render",
- "gpui_ce_util",
- "image",
- "itertools 0.14.0",
- "js-sys",
- "log",
- "metal",
- "naga 29.0.4",
- "objc2 0.6.4",
- "objc2-metal 0.3.2",
- "parking_lot",
- "pollster 0.4.0",
- "profiling",
- "raw-window-handle",
- "smallvec",
- "swash",
- "unicode-bidi",
- "unicode-segmentation",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu",
- "wgsl-rs",
- "windows 0.61.3",
- "windows 0.62.2",
- "zed-font-kit",
-]
-
-[[package]]
-name = "gpui_ce_windows"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "accesskit_windows",
- "anyhow",
- "dunce",
- "etagere",
- "futures",
- "gpui-ce",
- "gpui_ce_collections",
- "gpui_ce_render",
- "gpui_ce_util",
- "image",
- "itertools 0.14.0",
- "log",
- "parking_lot",
- "rand",
- "raw-window-handle",
- "smallvec",
- "uuid",
- "wgsl-rs",
- "windows 0.61.3",
- "windows 0.62.2",
- "windows-core 0.62.2",
- "windows-numerics 0.3.1",
- "windows-registry",
-]
-
-[[package]]
-name = "gpui_ce_zed_util"
-version = "0.2.2"
-dependencies = [
- "anyhow",
- "async-fs",
- "async_zip",
- "command-fds",
- "dirs 6.0.0",
- "dunce",
- "futures",
- "futures-lite",
- "globset",
- "gpui_ce_collections",
- "gpui_ce_path",
- "gpui_ce_util",
- "itertools 0.14.0",
- "libc",
- "log",
- "mach2",
- "nix 0.29.0",
- "percent-encoding",
- "pretty_assertions",
- "rand",
- "regex",
- "rust-embed",
- "schemars",
- "serde",
- "serde_json",
- "serde_json_lenient",
- "shlex 1.3.0",
- "smol",
- "take-until",
- "tempfile",
- "tendril",
- "unicase",
- "url",
- "walkdir",
- "which",
- "windows 0.62.2",
-]
-
-[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3606,6 +3114,498 @@ checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
+]
+
+[[package]]
+name = "mdrv-gpui-apple"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "block",
+ "core-foundation",
+ "core-graphics",
+ "core-video",
+ "derive_more",
+ "etagere",
+ "foreign-types",
+ "image",
+ "log",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-render",
+ "metal",
+ "objc2 0.6.4",
+ "objc2-quartz-core 0.3.2",
+ "parking_lot",
+ "smallvec",
+ "wgsl-rs",
+]
+
+[[package]]
+name = "mdrv-gpui-ce"
+version = "0.0.260925"
+dependencies = [
+ "accesskit",
+ "accesskit_consumer 0.38.0",
+ "anyhow",
+ "async-channel",
+ "async-task",
+ "backtrace",
+ "bindgen",
+ "bitflags 2.13.1",
+ "chrono",
+ "core-text",
+ "core-video",
+ "criterion",
+ "ctor",
+ "derive_more",
+ "embed-resource",
+ "env_logger",
+ "etagere",
+ "foreign-types",
+ "futures",
+ "futures-concurrency",
+ "getrandom 0.3.4",
+ "hdrhistogram",
+ "heapless",
+ "http",
+ "image",
+ "inventory",
+ "itertools 0.14.0",
+ "log",
+ "lyon",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-macros",
+ "mdrv-gpui-platform",
+ "mdrv-gpui-refineable",
+ "mdrv-gpui-scheduler",
+ "mdrv-gpui-shared-string",
+ "mdrv-gpui-sum-tree",
+ "mdrv-gpui-util",
+ "num_cpus",
+ "objc2 0.6.4",
+ "objc2-metal 0.3.2",
+ "palette",
+ "parking",
+ "parking_lot",
+ "pin-project",
+ "pollster 0.4.0",
+ "postage",
+ "profiling",
+ "proptest",
+ "rand",
+ "raw-window-handle",
+ "regex",
+ "resvg",
+ "rust-embed",
+ "schemars",
+ "seahash",
+ "serde",
+ "serde_json",
+ "skrifa 0.46.2",
+ "slotmap",
+ "smallvec",
+ "smol",
+ "spin 0.10.1",
+ "stacksafe",
+ "strum 0.27.2",
+ "taffy",
+ "thiserror 2.0.20",
+ "tracing",
+ "unicode-segmentation",
+ "url",
+ "usvg",
+ "uuid",
+ "waker-fn",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
+ "windows 0.61.3",
+ "windows 0.62.2",
+ "windows-capture",
+ "zed-font-kit",
+]
+
+[[package]]
+name = "mdrv-gpui-collections"
+version = "0.0.260925"
+dependencies = [
+ "indexmap",
+ "mdrv-gpui-util",
+ "rustc-hash 2.1.3",
+]
+
+[[package]]
+name = "mdrv-gpui-derive-refineable"
+version = "0.0.260925"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "mdrv-gpui-elements"
+version = "0.0.260925"
+dependencies = [
+ "mdrv-gpui-ce",
+ "mdrv-gpui-platform",
+ "palette",
+ "smallvec",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "mdrv-gpui-linux"
+version = "0.0.260925"
+dependencies = [
+ "accesskit",
+ "accesskit_unix",
+ "anyhow",
+ "as-raw-xcb-connection",
+ "ashpd",
+ "bitflags 2.13.1",
+ "bytemuck",
+ "calloop",
+ "calloop-wayland-source",
+ "filedescriptor",
+ "futures",
+ "image",
+ "itertools 0.14.0",
+ "libc",
+ "log",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-util",
+ "mdrv-gpui-wgpu",
+ "memfd",
+ "notify-rust",
+ "oo7",
+ "open",
+ "parking_lot",
+ "raw-window-handle",
+ "smallvec",
+ "smol",
+ "strum 0.27.2",
+ "url",
+ "uuid",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-cursor",
+ "wayland-protocols",
+ "wayland-protocols-plasma",
+ "wayland-protocols-wlr",
+ "x11-clipboard",
+ "x11rb",
+ "xkbcommon",
+ "zed-xim",
+]
+
+[[package]]
+name = "mdrv-gpui-macos"
+version = "0.0.260925"
+dependencies = [
+ "accesskit",
+ "accesskit_macos",
+ "anyhow",
+ "async-task",
+ "block",
+ "block2 0.6.2",
+ "core-foundation",
+ "core-foundation-sys",
+ "core-graphics",
+ "core-text",
+ "core-video",
+ "ctor",
+ "dispatch2",
+ "etagere",
+ "foreign-types",
+ "futures",
+ "image",
+ "itertools 0.14.0",
+ "libc",
+ "log",
+ "mach2",
+ "mdrv-gpui-apple",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-media",
+ "mdrv-gpui-util",
+ "metal",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-media",
+ "objc2-foundation 0.3.2",
+ "objc2-screen-capture-kit",
+ "objc2-user-notifications",
+ "palette",
+ "parking_lot",
+ "pathfinder_geometry",
+ "raw-window-handle",
+ "semver",
+ "smallvec",
+ "strum 0.27.2",
+ "url",
+ "uuid",
+ "zed-font-kit",
+]
+
+[[package]]
+name = "mdrv-gpui-macros"
+version = "0.0.260925"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "mdrv-gpui-media"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "bindgen",
+ "core-foundation",
+ "core-video",
+ "foreign-types",
+ "metal",
+ "objc",
+]
+
+[[package]]
+name = "mdrv-gpui-path"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "dunce",
+ "pretty_assertions",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
+name = "mdrv-gpui-platform"
+version = "0.0.260925"
+dependencies = [
+ "console_error_panic_hook",
+ "mdrv-gpui-apple",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-linux",
+ "mdrv-gpui-macos",
+ "mdrv-gpui-web",
+ "mdrv-gpui-windows",
+]
+
+[[package]]
+name = "mdrv-gpui-refineable"
+version = "0.0.260925"
+dependencies = [
+ "mdrv-gpui-derive-refineable",
+]
+
+[[package]]
+name = "mdrv-gpui-render"
+version = "0.0.260925"
+dependencies = [
+ "mdrv-gpui-ce",
+ "naga 24.0.0",
+ "naga 29.0.4",
+ "wgsl-rs",
+ "windows 0.62.2",
+]
+
+[[package]]
+name = "mdrv-gpui-scheduler"
+version = "0.0.260925"
+dependencies = [
+ "async-task",
+ "backtrace",
+ "chrono",
+ "flume",
+ "futures",
+ "parking_lot",
+ "rand",
+ "wasm_thread 0.3.3 (git+https://github.com/zed-industries/wasm_thread?rev=0cf96c7708dfb97ccf3da50347e25edcf75d6937)",
+ "web-time",
+]
+
+[[package]]
+name = "mdrv-gpui-shared-string"
+version = "0.0.260925"
+dependencies = [
+ "schemars",
+ "serde",
+ "smol_str",
+]
+
+[[package]]
+name = "mdrv-gpui-sum-tree"
+version = "0.0.260925"
+dependencies = [
+ "heapless",
+ "log",
+ "proptest",
+ "rand",
+ "rayon",
+ "tracing",
+]
+
+[[package]]
+name = "mdrv-gpui-tokio"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-util",
+ "tokio",
+]
+
+[[package]]
+name = "mdrv-gpui-util"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "log",
+ "which",
+]
+
+[[package]]
+name = "mdrv-gpui-web"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "futures",
+ "http",
+ "js-sys",
+ "log",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-scheduler",
+ "mdrv-gpui-wgpu",
+ "parking_lot",
+ "raw-window-handle",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm_thread 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "web-sys",
+ "web-time",
+]
+
+[[package]]
+name = "mdrv-gpui-wgpu"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "core-foundation",
+ "core-video",
+ "cosmic-text",
+ "criterion",
+ "env_logger",
+ "etagere",
+ "image",
+ "itertools 0.14.0",
+ "js-sys",
+ "log",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-platform",
+ "mdrv-gpui-render",
+ "mdrv-gpui-util",
+ "metal",
+ "naga 29.0.4",
+ "objc2 0.6.4",
+ "objc2-metal 0.3.2",
+ "parking_lot",
+ "pollster 0.4.0",
+ "profiling",
+ "raw-window-handle",
+ "smallvec",
+ "swash",
+ "unicode-bidi",
+ "unicode-segmentation",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "wgsl-rs",
+ "windows 0.61.3",
+ "windows 0.62.2",
+ "zed-font-kit",
+]
+
+[[package]]
+name = "mdrv-gpui-windows"
+version = "0.0.260925"
+dependencies = [
+ "accesskit",
+ "accesskit_windows",
+ "anyhow",
+ "dunce",
+ "etagere",
+ "futures",
+ "image",
+ "itertools 0.14.0",
+ "log",
+ "mdrv-gpui-ce",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-render",
+ "mdrv-gpui-util",
+ "parking_lot",
+ "rand",
+ "raw-window-handle",
+ "smallvec",
+ "uuid",
+ "wgsl-rs",
+ "windows 0.61.3",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
+ "windows-numerics 0.3.1",
+ "windows-registry",
+]
+
+[[package]]
+name = "mdrv-gpui-zed-util"
+version = "0.0.260925"
+dependencies = [
+ "anyhow",
+ "async-fs",
+ "async_zip",
+ "command-fds",
+ "dirs 6.0.0",
+ "dunce",
+ "futures",
+ "futures-lite",
+ "globset",
+ "itertools 0.14.0",
+ "libc",
+ "log",
+ "mach2",
+ "mdrv-gpui-collections",
+ "mdrv-gpui-path",
+ "mdrv-gpui-util",
+ "nix 0.29.0",
+ "percent-encoding",
+ "pretty_assertions",
+ "rand",
+ "regex",
+ "rust-embed",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_json_lenient",
+ "shlex 1.3.0",
+ "smol",
+ "take-until",
+ "tempfile",
+ "tendril",
+ "unicase",
+ "url",
+ "walkdir",
+ "which",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -4480,7 +4480,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 name = "perf"
 version = "0.1.0"
 dependencies = [
- "gpui_ce_collections",
+ "mdrv-gpui-collections",
  "serde",
  "serde_json",
 ]

@@ -1,6 +1,6 @@
 [package]
-name = "gpui_ce_platform"
-version = "0.1.0"
+name = "mdrv-gpui-platform"
+version = "0.0.260925"
 description.workspace = true
 edition.workspace = true
 publish.workspace = true
@@ -49,5 +49,5 @@ gpui = { workspace = true, features = ["windows-manifest"] }
 gpui_linux.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-gpui_web = { path = "../gpui_web", version = "0.1.0", package = "gpui_ce_web", default-features = false }
+gpui_web = { path = "../gpui_web", version = "0.0.260925", package = "mdrv-gpui-web", default-features = false }
 console_error_panic_hook.workspace = true

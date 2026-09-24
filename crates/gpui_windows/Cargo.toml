@@ -1,6 +1,6 @@
 [package]
-name = "gpui_ce_windows"
-version = "0.1.0"
+name = "mdrv-gpui-windows"
+version = "0.0.260925"
 description.workspace = true
 edition.workspace = true
 publish.workspace = true
@@ -18,7 +18,7 @@ test-support = ["gpui/test-support"]
 screen-capture = ["gpui/screen-capture"]
 
 [dependencies]
-gpui = { path = "../gpui", version = "0.2.2", package = "gpui-ce", default-features = false }
+gpui = { path = "../gpui", version = "0.0.260925", package = "mdrv-gpui-ce", default-features = false }
 gpui_render.workspace = true
 wgsl-rs.workspace = true
 
