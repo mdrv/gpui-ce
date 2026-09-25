@@ -20,6 +20,19 @@ when hidden — without re-creating the window.
 - `crates/gpui_linux/src/linux/wayland/window.rs` — real implementation:
   sets the layer-surface keyboard mode and commits immediately.
 
+### `Window::set_margin` (wayland layer-shell)
+
+Runtime margin updates for layer-shell windows, CSS order (top, right,
+bottom, left). On a surface with no anchors the margin _is_ its position,
+so this is how apps implement free placement and dragging of floating
+panels (e.g. sticky notes) that must stay on `Layer::Top`.
+
+- `crates/gpui/src/platform.rs` — `PlatformWindow::set_margin` trait
+  method (default no-op, linux/wayland only).
+- `crates/gpui/src/window.rs` — public `Window::set_margin`.
+- `crates/gpui_linux/src/linux/wayland/window.rs` — real implementation:
+  sets the layer-surface margins and commits immediately.
+
 ### `vendor/arrayref` (pinned 0.3.9)
 
 `arrayref` is a transitive dependency (via `tiny-skia`). The pin is vendored

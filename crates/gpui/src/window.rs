@@ -2260,6 +2260,15 @@ impl Window {
         self.platform_window.set_keyboard_interactivity(mode);
     }
 
+    /// Linux (wayland layer-shell) only: change this window's layer-surface
+    /// margins at runtime, CSS order (top, right, bottom, left). On a surface
+    /// with no anchors this is effectively its position. No-op on other
+    /// platforms/backends.
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    pub fn set_margin(&self, margin: (Pixels, Pixels, Pixels, Pixels)) {
+        self.platform_window.set_margin(margin);
+    }
+
     /// Start an interactive window resize operation if this window is resizable.
     pub fn start_window_resize(&self, edge: ResizeEdge) {
         if self.is_resizable {

@@ -478,6 +478,19 @@ impl WaylandSurfaceState {
         }
     }
 
+    /// CSS order (top, right, bottom, left). Returns whether it applied
+    /// (layer-shell surfaces only).
+    fn set_margin(&self, top: i32, right: i32, bottom: i32, left: i32) -> bool {
+        if let WaylandSurfaceState::LayerShell(WaylandLayerSurfaceState { layer_surface, .. }) =
+            self
+        {
+            layer_surface.set_margin(top, right, bottom, left);
+            true
+        } else {
+            false
+        }
+    }
+
     /// An exclusive edge must be a single edge that the surface is anchored to,
     /// otherwise the compositor raises a fatal `invalid_exclusive_edge` protocol
     /// error. An invalid edge is logged and ignored. Returns whether it applied.
@@ -2191,6 +2204,20 @@ impl PlatformWindow for WaylandWindow {
     fn set_exclusive_edge(&self, edge: Anchor) {
         let state = self.borrow();
         if state.surface_state.set_exclusive_edge(edge) {
+            // Commit to apply it immediately, otherwise it only takes effect
+            // on the next frame.
+            state.surface.commit();
+        }
+    }
+
+    fn set_margin(&self, margin: (Pixels, Pixels, Pixels, Pixels)) {
+        let state = self.borrow();
+        if state.surface_state.set_margin(
+            f32::from(margin.0) as i32,
+            f32::from(margin.1) as i32,
+            f32::from(margin.2) as i32,
+            f32::from(margin.3) as i32,
+        ) {
             // Commit to apply it immediately, otherwise it only takes effect
             // on the next frame.
             state.surface.commit();

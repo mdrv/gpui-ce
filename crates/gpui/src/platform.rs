@@ -983,6 +983,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// /`Exclusive` take it again. No-op on other platforms/backends.
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     fn set_keyboard_interactivity(&self, _mode: layer_shell::KeyboardInteractivity) {}
+    /// Linux (wayland layer-shell) only: change this surface's margins at
+    /// runtime, CSS order (top, right, bottom, left). No-op on other
+    /// platforms/backends and for non-layer-shell windows.
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn set_margin(&self, _margin: (Pixels, Pixels, Pixels, Pixels)) {}
     fn set_input_region(&self, _region: Option<&[Bounds<Pixels>]>) {}
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
