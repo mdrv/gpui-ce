@@ -1823,7 +1823,6 @@ impl PlatformWindow for WaylandWindow {
 
     fn resize(&mut self, size: Size<Pixels>) {
         let state = self.borrow();
-        let state_ptr = self.0.clone();
 
         // A popup's placement is the compositor's, so a resize re-runs the positioner and the
         // configure reply drives the buffer resize. Before the first configure the popup is
@@ -1863,11 +1862,16 @@ impl PlatformWindow for WaylandWindow {
             window_geometry.size.height,
         );
 
-        state
-            .globals
-            .executor
-            .spawn(async move { state_ptr.resize(size) })
-            .detach();
+        // Apply the client-side resize synchronously: doing it in a spawned
+        // task raced the frame — the staged layer size (above) committed with
+        // a buffer still drawn at the old size, and the compositor scaled it
+        // for a frame (rounded borders smeared into straight lines). When
+        // this returns, the wgpu surface already matches the staged size, so
+        // the next present is always size-consistent. The gpui-core resize
+        // callback is itself deferred through an async handle
+        // (`window.bounds_changed`), so nothing re-enters the current frame.
+        drop(state);
+        self.resize(size);
     }
 
     fn scale_factor(&self) -> f32 {
