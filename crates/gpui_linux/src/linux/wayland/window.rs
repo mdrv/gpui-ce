@@ -1534,36 +1534,50 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn set_size_and_scale(&self, size: Option<Size<Pixels>>, scale: Option<f32>) {
-        let (size, scale) = {
-            let mut state = self.state.borrow_mut();
-            if size.is_none_or(|size| size == state.bounds.size)
-                && scale.is_none_or(|scale| scale == state.scale)
-            {
-                return;
-            }
-            if let Some(size) = size {
-                state.bounds.size = size;
-            }
-            if let Some(scale) = scale {
-                state.scale = scale;
-            }
-            let device_bounds = state.bounds.to_device_pixels(state.scale);
-            state.renderer.update_drawable_size(device_bounds.size);
-            (state.bounds.size, state.scale)
-        };
+        if let Some((size, scale)) = self.apply_size_and_scale(size, scale) {
+            self.fire_resized(size, scale);
+        }
+    }
 
+    /// Updates bounds, scale, the drawable surface and the viewport. Fires no
+    /// callbacks, so it is safe to call from platform code that may itself be
+    /// running inside a gpui update (see `PlatformWindow::resize`).
+    fn apply_size_and_scale(
+        &self,
+        size: Option<Size<Pixels>>,
+        scale: Option<f32>,
+    ) -> Option<(Size<Pixels>, f32)> {
+        let mut state = self.state.borrow_mut();
+        if size.is_none_or(|size| size == state.bounds.size)
+            && scale.is_none_or(|scale| scale == state.scale)
+        {
+            return None;
+        }
+        if let Some(size) = size {
+            state.bounds.size = size;
+        }
+        if let Some(scale) = scale {
+            state.scale = scale;
+        }
+        let device_bounds = state.bounds.to_device_pixels(state.scale);
+        state.renderer.update_drawable_size(device_bounds.size);
+        if let Some(viewport) = &state.viewport {
+            viewport.set_destination(
+                f32::from(state.bounds.size.width) as i32,
+                f32::from(state.bounds.size.height) as i32,
+            );
+        }
+        Some((state.bounds.size, state.scale))
+    }
+
+    /// Fires the registered gpui-core resize callback. This re-enters the App
+    /// (`AsyncApp::update`), which deadlocks if the App is already mid-update
+    /// — call it only from a deferred (spawned) context in that case.
+    fn fire_resized(&self, size: Size<Pixels>, scale: f32) {
         let callback = self.callbacks.borrow_mut().resize.take();
         if let Some(mut fun) = callback {
             fun(size, scale);
             self.callbacks.borrow_mut().resize = Some(fun);
-        }
-
-        {
-            let state = self.state.borrow();
-            if let Some(viewport) = &state.viewport {
-                viewport
-                    .set_destination(f32::from(size.width) as i32, f32::from(size.height) as i32);
-            }
         }
     }
 
@@ -1823,6 +1837,7 @@ impl PlatformWindow for WaylandWindow {
 
     fn resize(&mut self, size: Size<Pixels>) {
         let state = self.borrow();
+        let executor = state.globals.executor.clone();
 
         // A popup's placement is the compositor's, so a resize re-runs the positioner and the
         // configure reply drives the buffer resize. Before the first configure the popup is
@@ -1862,16 +1877,21 @@ impl PlatformWindow for WaylandWindow {
             window_geometry.size.height,
         );
 
-        // Apply the client-side resize synchronously: doing it in a spawned
-        // task raced the frame — the staged layer size (above) committed with
-        // a buffer still drawn at the old size, and the compositor scaled it
-        // for a frame (rounded borders smeared into straight lines). When
-        // this returns, the wgpu surface already matches the staged size, so
-        // the next present is always size-consistent. The gpui-core resize
-        // callback is itself deferred through an async handle
-        // (`window.bounds_changed`), so nothing re-enters the current frame.
+        // Apply the client-side resize synchronously so the next present is
+        // size-consistent with the staged layer size above — deferring it let
+        // a commit pair the new size with the old buffer, and the compositor
+        // scaled it for a frame (rounded borders smeared). The gpui-core
+        // resize callback still fires from a spawned task: it re-enters the
+        // App via AsyncApp::update, which deadlocks when called from inside
+        // an update (e.g. our caller is mid-render).
         drop(state);
-        self.resize(size);
+        let state_ptr = self.0.clone();
+        if let Some((size, scale)) = state_ptr.apply_size_and_scale(Some(size), None) {
+            executor.spawn(async move {
+                state_ptr.fire_resized(size, scale);
+            })
+            .detach();
+        }
     }
 
     fn scale_factor(&self) -> f32 {
