@@ -38,6 +38,25 @@ panels (e.g. sticky notes) that must stay on `Layer::Top`.
   `cx.notify()` — the present commit carries margins, size and buffer
   atomically.
 
+### Synchronous wayland window resize (tag `mdrv-gpui-0.0.260925.4`)
+
+Per-frame programmatic `Window::resize` on layer surfaces (edge-drag
+resizing a floating panel):
+
+- `crates/gpui_linux/src/linux/wayland/window.rs` — the trait `resize`
+  stages the layer-surface size (`set_geometry`) and then applies the
+  client-side resize (wgpu surface + drawable, via `set_size_and_scale`)
+  **synchronously**; only the gpui-core resize callback is fired from a
+  spawned task. Both halves are load-bearing:
+  - _Deferred drawable resize_ (upstream behavior) raced the frame: the
+    staged size could commit with a buffer still drawn at the old size,
+    and the compositor scaled it for a frame (rounded borders smeared
+    into straight lines).
+  - _The callback_ must stay deferred: it re-enters the App via
+    `AsyncApp::update`, which deadlocks when fired mid-update (tag .3
+    fired it synchronously and froze the whole UI thread while the
+    daemon's other threads stayed alive).
+
 ### `vendor/arrayref` (pinned 0.3.9)
 
 `arrayref` is a transitive dependency (via `tiny-skia`). The pin is vendored
