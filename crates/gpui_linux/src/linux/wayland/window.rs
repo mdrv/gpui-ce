@@ -2211,17 +2211,18 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn set_margin(&self, margin: (Pixels, Pixels, Pixels, Pixels)) {
+        // Stage only: the change lands with the next presented frame, in the
+        // same commit as any pending size (Window::resize) and the matching
+        // new buffer. Committing here instead would apply a pending size
+        // against the old buffer for a frame — the compositor scales it and
+        // the straight border segments smear between the rounded corners.
         let state = self.borrow();
-        if state.surface_state.set_margin(
+        state.surface_state.set_margin(
             f32::from(margin.0) as i32,
             f32::from(margin.1) as i32,
             f32::from(margin.2) as i32,
             f32::from(margin.3) as i32,
-        ) {
-            // Commit to apply it immediately, otherwise it only takes effect
-            // on the next frame.
-            state.surface.commit();
-        }
+        );
     }
 
     fn set_keyboard_interactivity(&self, mode: KeyboardInteractivity) {

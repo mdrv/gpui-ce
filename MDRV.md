@@ -31,7 +31,12 @@ panels (e.g. sticky notes) that must stay on `Layer::Top`.
   method (default no-op, linux/wayland only).
 - `crates/gpui/src/window.rs` — public `Window::set_margin`.
 - `crates/gpui_linux/src/linux/wayland/window.rs` — real implementation:
-  sets the layer-surface margins and commits immediately.
+  stages the layer-surface margins; they land with the next presented
+  frame. **No explicit commit on purpose**: a commit here would also apply
+  any pending `Window::resize` size against the _old_ buffer, which the
+  compositor then scales for a frame (rounded borders smear). Stage and
+  `cx.notify()` — the present commit carries margins, size and buffer
+  atomically.
 
 ### `vendor/arrayref` (pinned 0.3.9)
 
