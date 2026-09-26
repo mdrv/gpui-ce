@@ -63,6 +63,14 @@ resizing a floating panel):
 in-fork so every mdrv-ds app can `[patch.crates-io]` point here instead of
 keeping per-tree copies, and builds stay deterministic/offline-friendly.
 
+### `image` exact pin (=0.25.10)
+
+The workspace reqs `image = "=0.25.10"` on purpose. Git-dep consumers
+generate their own `Cargo.lock`; with a caret req they drifted to versions
+missing/renaming `into_raw_bgra` and the fork stopped compiling
+(mdrc's upperadd hit 0.25.9, impin hit the newer drift). An exact req
+makes every consumer lock resolve the tested version.
+
 ## Branch policy
 
 `main` carries the MDRV patches (consumers path-depend on the working
@@ -106,7 +114,7 @@ gpui-ce dev-depends on platform (41 examples). Portability policy is
 Tag per release as `mdrv-gpui-0.0.<version>`; `vendor/arrayref` is a
 workspace member since `55d7e50751` so the git-form patch resolves.
 
-Full sync procedure: `/x/m/v270/gpui/gpui-ce-sync.md`.
+Full sync procedure: `/x/m/v270/gpui-ce/50-upstream-sync.md`.
 
 ## Consumers
 
