@@ -1048,7 +1048,10 @@ fn face_info_into_properties(
 
 fn check_is_known_emoji_font(postscript_name: &str) -> bool {
     // TODO: Include other common emoji fonts
-    postscript_name == "NotoColorEmoji"
+    matches!(
+        postscript_name,
+        "NotoColorEmoji" | "Twemoji" | "AppleColorEmoji" | "SegoeUIEmoji"
+    )
 }
 
 #[cfg(test)]
