@@ -98,11 +98,17 @@ impl PlatformDisplay for MacDisplay {
     fn bounds(&self) -> Bounds<Pixels> {
         unsafe {
             // CGDisplayBounds is in "global display" coordinates, where 0 is
-            // the top left of the primary display.
+            // the top left of the primary display. Its origin is already in
+            // that top-left-origin global space, so report it verbatim
+            // (stubbing it to (0, 0) breaks callers that map displays to
+            // global positions).
             let bounds = CGDisplayBounds(self.0);
 
             Bounds {
-                origin: Default::default(),
+                origin: point(
+                    px(bounds.origin.x as f32),
+                    px(bounds.origin.y as f32),
+                ),
                 size: size(px(bounds.size.width as f32), px(bounds.size.height as f32)),
             }
         }

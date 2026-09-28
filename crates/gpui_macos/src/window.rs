@@ -1144,6 +1144,8 @@ impl MacWindow {
             let pool: ObjcId = msg_send![class!(NSAutoreleasePool), new];
 
             let allows_automatic_window_tabbing = tabbing_identifier.is_some();
+            // Capture before `titlebar` is consumed by `is_none_or` below.
+            let has_titlebar = titlebar.is_some();
             if allows_automatic_window_tabbing {
                 let () =
                     msg_send![class!(NSWindow), setAllowsAutomaticWindowTabbing: Bool::new(true)];
@@ -1375,7 +1377,9 @@ impl MacWindow {
                     // the window or application aren't active, which is often the case
                     // e.g. for notification windows.
                     let tracking_area: ObjcId = msg_send![class!(NSTrackingArea), alloc];
-                    let _: () = msg_send![
+                    // `init*` methods return the object (`@`); declaring a
+                    // void return trips objc2's runtime encoding check.
+                    let tracking_area: ObjcId = msg_send![
                         tracking_area,
                         initWithRect: Objc2NSRect::new(Objc2NSPoint::new(0., 0.), NSSize::new(0., 0.)),
                         options: NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingInVisibleRect,
@@ -1394,6 +1398,17 @@ impl MacWindow {
                         NSWindowCollectionBehavior::CanJoinAllSpaces
                             | NSWindowCollectionBehavior::FullScreenAuxiliary,
                     );
+
+                    // Chrome-less panels (toasts, pins) become true overlays:
+                    // borderless + non-activating, the canonical floating
+                    // panel recipe. A titled panel with a transparent
+                    // titlebar would still draw its traffic lights.
+                    if !has_titlebar {
+                        native_window.setStyleMask_(
+                            NSWindowStyleMask::Borderless
+                                | NSWindowStyleMask::NonactivatingPanel,
+                        );
+                    }
                 }
                 WindowKind::Dialog => {
                     if !main_window.is_null() {
@@ -1593,6 +1608,30 @@ impl PlatformWindow for MacWindow {
                         width: size.width.as_f32() as f64,
                         height: size.height.as_f32() as f64,
                     });
+                })
+            })
+            .detach();
+    }
+
+    fn set_position(&self, origin: Point<Pixels>) {
+        let this = self.0.lock();
+        let window = this.native_window;
+        let closed = this.closed.clone();
+        this.foreground_executor
+            .spawn(async move {
+                if_window_not_closed(closed, || unsafe {
+                    // GPUI coordinates are top-left-origin global; Cocoa is
+                    // bottom-left-origin with the primary screen (the one at
+                    // origin (0, 0)) growing upward. Flip y against the
+                    // primary screen's top edge.
+                    let screens: ObjcId = msg_send![class!(NSScreen), screens];
+                    let primary: ObjcId = msg_send![screens, objectAtIndex: 0usize];
+                    let frame: Objc2NSRect = msg_send![primary, frame];
+                    let top_left = Objc2NSPoint::new(
+                        f64::from(origin.x.as_f32()),
+                        frame.origin.y + frame.size.height - f64::from(origin.y.as_f32()),
+                    );
+                    let _: () = msg_send![window, setFrameTopLeftPoint: top_left];
                 })
             })
             .detach();

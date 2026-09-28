@@ -2588,6 +2588,14 @@ impl Window {
         self.platform_window.resize(size);
     }
 
+    /// Move the window so that its top-left corner lands at `origin`
+    /// (global screen coordinates, top-left of the primary display, y
+    /// pointing down — the same space as `App::displays()` bounds).
+    /// No-op on platforms that cannot reposition windows programmatically.
+    pub fn set_position(&self, origin: Point<Pixels>) {
+        self.platform_window.set_position(origin);
+    }
+
     /// Returns whether or not the window is currently fullscreen
     pub fn is_fullscreen(&self) -> bool {
         self.platform_window.is_fullscreen()
@@ -3688,10 +3696,11 @@ impl Window {
 
     /// Updates the cursor style for the entire window at the platform level. A cursor
     /// style using this method will have precedence over any cursor style set using
-    /// `set_cursor_style`. This method should only be called during the paint
-    /// phase of element drawing.
+    /// `set_cursor_style`. This method may be called during the prepaint phase
+    /// (where views render, e.g. from `Render::render`) or the paint phase;
+    /// the request is stored on the pending frame either way.
     pub fn set_window_cursor_style(&mut self, style: CursorStyle) {
-        self.invalidator.debug_assert_paint();
+        self.invalidator.debug_assert_paint_or_prepaint();
         self.next_frame.cursor_styles.push(CursorStyleRequest {
             hitbox_id: None,
             style,
