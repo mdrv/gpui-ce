@@ -550,6 +550,9 @@ impl WindowsWindow {
         register_drag_drop(&this)?;
         set_non_rude_hwnd(hwnd, true);
         configure_dwm_dark_mode(hwnd, appearance);
+        if params.kind == WindowKind::PopUp {
+            dwm_disable_window_border(hwnd);
+        }
         this.state.border_offset.update(hwnd)?;
         let placement =
             retrieve_window_placement(hwnd, display, params.bounds, &this.state.border_offset)?;
@@ -1665,6 +1668,29 @@ fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {
         if !result.is_ok() {
             return;
         }
+    }
+}
+
+/// Win11 draws a 1px border around every top-level window (DWMWA_BORDER_COLOR
+/// follows the system dark-mode/accent settings). Transparent overlay PopUps
+/// (impin's pins and notice pill) must not show it: opt out with
+/// DWMWA_COLOR_NONE, available since 22621 like the backdrop attribute.
+fn dwm_disable_window_border(hwnd: HWND) {
+    let mut version = unsafe { std::mem::zeroed() };
+    let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
+
+    if !status.is_ok() || version.dwBuildNumber < 22621 {
+        return;
+    }
+
+    let color_none: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            windows::Win32::Graphics::Dwm::DWMWA_BORDER_COLOR,
+            &color_none as *const _ as *const _,
+            std::mem::size_of_val(&color_none) as u32,
+        );
     }
 }
 
