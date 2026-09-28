@@ -649,6 +649,40 @@ impl PlatformWindow for WindowsWindow {
             .detach();
     }
 
+    fn set_position(&self, origin: Point<Pixels>) {
+        let hwnd = self.0.hwnd;
+        let scale_factor = self.scale_factor();
+        let x = (origin.x.as_f32() * scale_factor) as i32;
+        let y = (origin.y.as_f32() * scale_factor) as i32;
+        self.0
+            .executor
+            .spawn(async move {
+                // `WS_EX_TOPMOST` windows (pins, overlays) re-assert their
+                // band: moving to the front of the topmost band doubles as
+                // raise-on-click. Ordinary windows keep their z-order.
+                let topmost = unsafe { get_window_long(hwnd, GWL_EXSTYLE) }
+                    & (WS_EX_TOPMOST.0 as isize)
+                    != 0;
+                let (insert_after, flags) = if topmost {
+                    (
+                        Some(HWND_TOPMOST),
+                        SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+                    )
+                } else {
+                    (
+                        None,
+                        SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+                    )
+                };
+                unsafe {
+                    SetWindowPos(hwnd, insert_after, x, y, 0, 0, flags)
+                        .context("unable to set window position")
+                        .log_err();
+                }
+            })
+            .detach();
+    }
+
     fn scale_factor(&self) -> f32 {
         self.state.scale_factor.get()
     }

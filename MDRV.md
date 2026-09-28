@@ -57,6 +57,25 @@ resizing a floating panel):
     fired it synchronously and froze the whole UI thread while the
     daemon's other threads stayed alive).
 
+### `Window::set_position` (tags `mdrv-gpui-0.0.260925.7` macOS, `.8` Windows)
+
+Runtime repositioning in the gpui global space (top-left of the primary
+display, y down, logical pixels — the same space as
+`PlatformDisplay::bounds`):
+
+- `crates/gpui/src/platform.rs` — `PlatformWindow::set_position` trait
+  method (default no-op; Wayland layer surfaces move via margins instead).
+- `crates/gpui/src/window.rs` — public `Window::set_position`.
+- `crates/gpui_macos/src/window.rs` — `setFrameTopLeftPoint` with the
+  Cocoa y-flip against the primary screen (tag `.7`), plus true display
+  origins in `gpui_macos/src/display.rs` and borderless chrome-less
+  NSPanels for titlebar-less `WindowKind::PopUp`.
+- `crates/gpui_windows/src/window.rs` — `SetWindowPos` with the window's
+  scale factor applied (both sides are top-left-origin, no flip). A window
+  already carrying `WS_EX_TOPMOST` re-asserts its band in the same call,
+  which raises it — raise-on-click for overlay windows for free; ordinary
+  windows keep their z-order (tag `.8`).
+
 ### `vendor/arrayref` (pinned 0.3.9)
 
 `arrayref` is a transitive dependency (via `tiny-skia`). The pin is vendored
