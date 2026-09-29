@@ -271,7 +271,15 @@ mod source {
         let tile_origin = vec2f(tile.bounds.origin.x as f32, tile.bounds.origin.y as f32);
         let tile_size = vec2f(tile.bounds.size.x as f32, tile.bounds.size.y as f32);
         let texture_size = vec2f(atlas_size.x as f32, atlas_size.y as f32);
-        (tile_origin + unit_position * tile_size) / texture_size
+        // Half-texel inset: unit 0/1 map to the centers of the first/last
+        // texels, so the linear sampler's footprint never crosses the tile
+        // boundary. Without this, sprites drawn at a fractional scale (an
+        // image at a non-integer zoom) bleed the neighboring atlas texels
+        // into their edge pixels — a stray 1px line at the sprite edge.
+        // Integer scales are unaffected: texel centers land exactly on
+        // pixel centers either way.
+        (tile_origin + vec2f(0.5, 0.5) + unit_position * (tile_size - vec2f(1.0, 1.0)))
+            / texture_size
     }
 
     pub fn color_brightness(color: Vec3f) -> f32 {
