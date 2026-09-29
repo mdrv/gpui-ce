@@ -872,6 +872,14 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn window_bounds(&self) -> WindowBounds;
     fn content_size(&self) -> Size<Pixels>;
     fn resize(&mut self, size: Size<Pixels>);
+
+    /// Move the window so that its top-left corner lands at `origin`, in
+    /// global screen coordinates (top-left of the primary display, y
+    /// pointing down — the same space as [`PlatformDisplay::bounds`]).
+    ///
+    /// No-op on platforms that cannot reposition windows programmatically
+    /// (Wayland layer surfaces move via margins instead).
+    fn set_position(&self, _origin: Point<Pixels>) {}
     fn scale_factor(&self) -> f32;
     fn appearance(&self) -> WindowAppearance;
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>>;

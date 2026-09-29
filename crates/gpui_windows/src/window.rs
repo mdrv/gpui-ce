@@ -550,6 +550,9 @@ impl WindowsWindow {
         register_drag_drop(&this)?;
         set_non_rude_hwnd(hwnd, true);
         configure_dwm_dark_mode(hwnd, appearance);
+        if params.kind == WindowKind::PopUp {
+            dwm_disable_window_border(hwnd);
+        }
         this.state.border_offset.update(hwnd)?;
         let placement =
             retrieve_window_placement(hwnd, display, params.bounds, &this.state.border_offset)?;
@@ -644,6 +647,40 @@ impl PlatformWindow for WindowsWindow {
                     )
                     .context("unable to set window content size")
                     .log_err();
+                }
+            })
+            .detach();
+    }
+
+    fn set_position(&self, origin: Point<Pixels>) {
+        let hwnd = self.0.hwnd;
+        let scale_factor = self.scale_factor();
+        let x = (origin.x.as_f32() * scale_factor) as i32;
+        let y = (origin.y.as_f32() * scale_factor) as i32;
+        self.0
+            .executor
+            .spawn(async move {
+                // `WS_EX_TOPMOST` windows (pins, overlays) re-assert their
+                // band: moving to the front of the topmost band doubles as
+                // raise-on-click. Ordinary windows keep their z-order.
+                let topmost = unsafe { get_window_long(hwnd, GWL_EXSTYLE) }
+                    & (WS_EX_TOPMOST.0 as isize)
+                    != 0;
+                let (insert_after, flags) = if topmost {
+                    (
+                        Some(HWND_TOPMOST),
+                        SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+                    )
+                } else {
+                    (
+                        None,
+                        SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+                    )
+                };
+                unsafe {
+                    SetWindowPos(hwnd, insert_after, x, y, 0, 0, flags)
+                        .context("unable to set window position")
+                        .log_err();
                 }
             })
             .detach();
@@ -1630,6 +1667,45 @@ fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {
 
         if !result.is_ok() {
             return;
+        }
+    }
+}
+
+/// Transparent overlay PopUps (impin's pins and notice pill) must not show
+/// any DWM frame: DWMWA_NCRENDERING_POLICY = DWMNCRP_DISABLED turns off the
+/// non-client rendering (border + frame edge) on every build since 17763 —
+/// observed still faintly visible on 26200 with only the color set below —
+/// and Win11's DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE (22621+) additionally
+/// kills the accent/dark-mode 1px border line.
+fn dwm_disable_window_border(hwnd: HWND) {
+    let mut version = unsafe { std::mem::zeroed() };
+    let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
+
+    if !status.is_ok() {
+        return;
+    }
+
+    if version.dwBuildNumber >= 17763 {
+        let policy: i32 = windows::Win32::Graphics::Dwm::DWMNCRP_DISABLED.0;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                windows::Win32::Graphics::Dwm::DWMWA_NCRENDERING_POLICY,
+                &policy as *const _ as *const _,
+                std::mem::size_of_val(&policy) as u32,
+            );
+        }
+    }
+
+    if version.dwBuildNumber >= 22621 {
+        let color_none: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                windows::Win32::Graphics::Dwm::DWMWA_BORDER_COLOR,
+                &color_none as *const _ as *const _,
+                std::mem::size_of_val(&color_none) as u32,
+            );
         }
     }
 }

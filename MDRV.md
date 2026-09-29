@@ -57,6 +57,40 @@ resizing a floating panel):
     fired it synchronously and froze the whole UI thread while the
     daemon's other threads stayed alive).
 
+### `Window::set_position` (tags `mdrv-gpui-0.0.260925.7` macOS, `.8` Windows)
+
+Runtime repositioning in the gpui global space (top-left of the primary
+display, y down, logical pixels — the same space as
+`PlatformDisplay::bounds`):
+
+- `crates/gpui/src/platform.rs` — `PlatformWindow::set_position` trait
+  method (default no-op; Wayland layer surfaces move via margins instead).
+- `crates/gpui/src/window.rs` — public `Window::set_position`.
+- `crates/gpui_macos/src/window.rs` — `setFrameTopLeftPoint` with the
+  Cocoa y-flip against the primary screen (tag `.7`), plus true display
+  origins in `gpui_macos/src/display.rs` and borderless chrome-less
+  NSPanels for titlebar-less `WindowKind::PopUp`.
+- `crates/gpui_windows/src/window.rs` — `SetWindowPos` with the window's
+  scale factor applied (both sides are top-left-origin, no flip). A window
+  already carrying `WS_EX_TOPMOST` re-asserts its band in the same call,
+  which raises it — raise-on-click for overlay windows for free; ordinary
+  windows keep their z-order (tag `.8`).
+
+### PopUp windows opt out of the DWM frame (tags `mdrv-gpui-0.0.260925.10`/`.11`)
+
+Win11 draws a 1px border around every top-level window (`DWMWA_BORDER_COLOR`
+follows dark-mode/accent settings). Transparent overlay PopUps (impin's pins
+and notice pill) showed that outline ~8px outside their content, because the
+placement/resize math sizes the window rect as client + measured DWM frame
+offsets even for style-0 borderless windows. Fix: for
+`kind == WindowKind::PopUp`, `new()` sets
+`DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE` (build ≥ 22621 guarded, mirroring the
+backdrop helper; tag .10). With the color alone the outline was still faintly
+visible on 26200, so .11 also sets `DWMWA_NCRENDERING_POLICY =
+DWMNCRP_DISABLED` (17763+) — non-client rendering off entirely (border +
+frame edge) is the reliable kill switch. Normal chromeless windows keep the
+border — Zed wants it.
+
 ### `vendor/arrayref` (pinned 0.3.9)
 
 `arrayref` is a transitive dependency (via `tiny-skia`). The pin is vendored
