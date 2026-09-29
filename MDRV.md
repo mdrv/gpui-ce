@@ -57,7 +57,7 @@ resizing a floating panel):
     fired it synchronously and froze the whole UI thread while the
     daemon's other threads stayed alive).
 
-### `Window::set_position` (tags `mdrv-gpui-0.0.260925.7` macOS, `.8` Windows)
+### `Window::set_position` (tags `mdrv-gpui-0.0.260925.7` macOS, `.9` Windows)
 
 Runtime repositioning in the gpui global space (top-left of the primary
 display, y down, logical pixels — the same space as
@@ -74,7 +74,7 @@ display, y down, logical pixels — the same space as
   scale factor applied (both sides are top-left-origin, no flip). A window
   already carrying `WS_EX_TOPMOST` re-asserts its band in the same call,
   which raises it — raise-on-click for overlay windows for free; ordinary
-  windows keep their z-order (tag `.8`).
+  windows keep their z-order (tag `.9`).
 
 ### PopUp windows opt out of the DWM frame (tags `mdrv-gpui-0.0.260925.10`/`.11`)
 
@@ -136,7 +136,7 @@ fire on macOS builds (their arms are cfg'd out elsewhere):
 ### GPUIApplication ivars class-check (tag `mdrv-gpui-0.0.260929.1`)
 
 `[GPUIApplication sharedApplication]` returns any existing shared
-NSApplication *regardless of its actual class*. `MacPlatform::run`
+NSApplication _regardless of its actual class_. `MacPlatform::run`
 unconditionally wrote `ivars().platform` through the returned object, so an
 app that had instantiated plain `NSApplication` before `application().run()`
 (e.g. `NSApplication::sharedApplication` + `setActivationPolicy(.Accessory)`
@@ -144,7 +144,7 @@ for accessory mode) got those writes past the end of the smaller allocation:
 silent heap corruption surfacing much later as malloc-zone aborts / SEGVs in
 innocent allocators (impin daemon, ~50% of rapid restarts). Found with guard
 malloc (`DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib`), which catches the
-*writer* instead of a victim. `MacPlatform::run` now asserts the shared app
+_writer_ instead of a victim. `MacPlatform::run` now asserts the shared app
 is actually a `GPUIApplication` (loud message pointing at
 `Application::with_activation_policy`, the supported way to set the policy).
 App-side rule: **never call AppKit entry points that instantiate
@@ -155,7 +155,7 @@ NSApplication before `application().run()`**.
 `atlas_texture_coordinates` (crates/gpui_render/src/shaders/common.rs) mapped
 the sprite quad's unit square linearly onto the atlas tile's full pixel span.
 With the linear sampler, the edge pixels' bilinear footprint then crosses the
-tile boundary and blends in *neighboring atlas texels*: at integer scales
+tile boundary and blends in _neighboring atlas texels_: at integer scales
 pixel centers align with texel centers so nothing shows, but at a fractional
 scale (an image at a non-integer zoom, a fractional-DPI icon) the sprite edge
 grows a stray 1px line colored by whatever is adjacent in the atlas (often a
@@ -168,6 +168,16 @@ stay pixel-exact (texel centers land on pixel centers either way). Applies to
 all sprite kinds (monochrome, polychrome, underlay) on both the Metal
 (gpui_apple) and wgpu (gpui_wgpu) renderers, which share the shader module.
 
+### Color-emoji font allowlist (tag `mdrv-gpui-0.0.260925.6`)
+
+`check_is_known_emoji_font` in `gpui_wgpu/src/cosmic_text_system.rs` was
+hardcoded to `"NotoColorEmoji"`. Any other CBDT-only color font (Arch's
+`ttf-twemoji`, Apple Color Emoji, Segoe UI Emoji) took the non-emoji
+swash path (`StrikeWith::ExactSize` + outlines) and rendered blank. The
+allowlist now matches `NotoColorEmoji | Twemoji | AppleColorEmoji |
+SegoeUIEmoji`. SVGinOT fonts remain unsupported — swash has no `SVG `
+table rasterizer (COLR/CBDT/sbix/outlines only).
+
 ## Branch policy
 
 `main` carries the MDRV patches (consumers path-depend on the working
@@ -178,6 +188,12 @@ upstream via:
 
 Keep patches minimal and re-submit upstream when feasible; drop them from
 this file when they land.
+
+Patch work may happen on short-lived feature branches (e.g. per-platform
+ports), but **merge them back to `main` before tagging**: a tag must be a
+superset of every lineage. Interleaved tags on diverged branches silently
+miss fixes (seen 2026-09-29: `260929.2` on the macOS line lacked the
+Windows DWM `.10`/`.11`; resolved by the `260929.3` integration merge).
 
 ## Dependency convention (since the 2026-08-31 upstream sync)
 
@@ -215,9 +231,12 @@ Full sync procedure: `/x/m/v270/gpui-ce/50-upstream-sync.md`.
 
 ## Consumers
 
-mdrv-ds-clock, mdrv-ds-launcher, mdrv-ds-legend, mdrv-ds-overlay,
-mdrv-ds-shell — all path-dep `/g/gpui-ce/crates/*` (only
-launcher/clock/overlay use `gpui_platform` directly). The former
-mdrv-ds-{audio,settings,notify,battery} satellite crates were merged
-into mdrv-ds-overlay on 2026-08-31; their CLI binaries survive as
-`src/bin/*` in that repo (same names, same socket protocol).
+- `mdrv-ds` suite (clock, launcher, legend, overlay, shell) — path-dep
+  `/g/gpui-ce/crates/*` (only launcher/clock/overlay use `gpui_platform`
+  directly). The former mdrv-ds-{audio,settings,notify,battery} satellite
+  crates were merged into mdrv-ds-overlay on 2026-08-31; their CLI
+  binaries survive as `src/bin/*` in that repo (same names, same socket
+  protocol).
+- `mdrv-em` (emoji picker) — git tag `mdrv-gpui-0.0.260925.6`.
+- `impin` (image pins; branch `cross-platform`, v0.2.0) — git tag
+  `mdrv-gpui-0.0.260929.2`, Linux + macOS + Windows.
