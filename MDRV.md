@@ -99,6 +99,23 @@ fire on macOS builds (their arms are cfg'd out elsewhere):
   strict-`Paint` assert fired on every debug-build drag, on every
   platform.
 
+### GPUIApplication ivars class-check (tag `mdrv-gpui-0.0.260929.1`)
+
+`[GPUIApplication sharedApplication]` returns any existing shared
+NSApplication *regardless of its actual class*. `MacPlatform::run`
+unconditionally wrote `ivars().platform` through the returned object, so an
+app that had instantiated plain `NSApplication` before `application().run()`
+(e.g. `NSApplication::sharedApplication` + `setActivationPolicy(.Accessory)`
+for accessory mode) got those writes past the end of the smaller allocation:
+silent heap corruption surfacing much later as malloc-zone aborts / SEGVs in
+innocent allocators (impin daemon, ~50% of rapid restarts). Found with guard
+malloc (`DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib`), which catches the
+*writer* instead of a victim. `MacPlatform::run` now asserts the shared app
+is actually a `GPUIApplication` (loud message pointing at
+`Application::with_activation_policy`, the supported way to set the policy).
+App-side rule: **never call AppKit entry points that instantiate
+NSApplication before `application().run()`**.
+
 ## Branch policy
 
 `main` carries the MDRV patches (consumers path-depend on the working
