@@ -116,6 +116,24 @@ is actually a `GPUIApplication` (loud message pointing at
 App-side rule: **never call AppKit entry points that instantiate
 NSApplication before `application().run()`**.
 
+### Sprite half-texel UV inset (tag `mdrv-gpui-0.0.260929.2`)
+
+`atlas_texture_coordinates` (crates/gpui_render/src/shaders/common.rs) mapped
+the sprite quad's unit square linearly onto the atlas tile's full pixel span.
+With the linear sampler, the edge pixels' bilinear footprint then crosses the
+tile boundary and blends in *neighboring atlas texels*: at integer scales
+pixel centers align with texel centers so nothing shows, but at a fractional
+scale (an image at a non-integer zoom, a fractional-DPI icon) the sprite edge
+grows a stray 1px line colored by whatever is adjacent in the atlas (often a
+white glyph). Found in impin: a white hairline across a pinned image's bottom
+edge at certain zooms.
+
+Fix: inset the UV mapping by half a texel — unit 0/1 map to the centers of
+the first/last texels, so sampling can never leave the tile. Integer scales
+stay pixel-exact (texel centers land on pixel centers either way). Applies to
+all sprite kinds (monochrome, polychrome, underlay) on both the Metal
+(gpui_apple) and wgpu (gpui_wgpu) renderers, which share the shader module.
+
 ## Branch policy
 
 `main` carries the MDRV patches (consumers path-depend on the working
