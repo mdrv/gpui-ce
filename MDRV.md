@@ -71,6 +71,34 @@ missing/renaming `into_raw_bgra` and the fork stopped compiling
 (mdrc's upperadd hit 0.25.9, impin hit the newer drift). An exact req
 makes every consumer lock resolve the tested version.
 
+### macOS backend fixes (tag `mdrv-gpui-0.0.260925.7`)
+
+One commit (`macos-port`) making the AppKit backend usable for
+chrome-less overlay PopUps. The last three are latent crashes that only
+fire on macOS builds (their arms are cfg'd out elsewhere):
+
+- `Window::set_position` — `PlatformWindow` trait method (default
+  no-op; Wayland placement stays margin-based) plus the public wrapper
+  in `crates/gpui/src/window.rs`. The `MacWindow` impl converts
+  GPUI-global top-left-origin logical px to Cocoa
+  (`setFrameTopLeftPoint`, y-flip via primary-screen `maxY`),
+  executor-spawned like `resize`.
+- `MacDisplay::bounds` — real `CGDisplayBounds` origins (multi-display
+  global topology, secondaries may be negative) instead of the stubbed
+  `(0,0)`; anything mapping displays to global positions needs this.
+- Borderless `WindowKind::PopUp` — `titlebar: None` re-styles the
+  NSPanel to `Borderless | NonactivatingPanel` (canonical
+  floating-palette recipe); previously traffic lights rendered through
+  the hidden-titlebar styling.
+- `NSTrackingArea` init msg_send declared as returning `ObjcId`, not
+  `()` — objc2's debug encoding check panicked (`expected '@', found
+  'v'`) on the first PopUp open.
+- `set_window_cursor_style` debug assert widened to `Paint | Prepaint`:
+  views' `Render::render` runs in `DrawPhase::Prepaint` on this fork
+  (`draw_roots` sets `Paint` only after layout+prepaint), so the
+  strict-`Paint` assert fired on every debug-build drag, on every
+  platform.
+
 ## Branch policy
 
 `main` carries the MDRV patches (consumers path-depend on the working
