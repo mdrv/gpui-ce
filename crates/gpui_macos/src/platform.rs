@@ -531,8 +531,25 @@ impl Platform for MacPlatform {
         }
 
         unsafe {
-            let app: Retained<GPUIApplication> =
+            // `sharedApplication` on the subclass returns any existing
+            // instance *regardless of its actual class*. If the app already
+            // instantiated NSApplication before gpui ran (any early AppKit
+            // call, e.g. setting an activation policy), the `ivars()` writes
+            // below go past the end of that smaller allocation — silent heap
+            // corruption that surfaces as random malloc aborts/SEGVs later
+            // (found 2026-09-29 with guard malloc). Fail loudly instead.
+            let any_app: Retained<NSApplication> =
                 msg_send![GPUIApplication::class(), sharedApplication];
+            assert_eq!(
+                any_app.class(),
+                GPUIApplication::class(),
+                "an NSApplication already exists but was not created as \
+                 GPUIApplication — don't call AppKit entry points that \
+                 instantiate NSApplication (sharedApplication, activation \
+                 policies) before application().run(); use \
+                 Application::with_activation_policy instead",
+            );
+            let app: Retained<GPUIApplication> = Retained::cast(any_app);
             let app_delegate = GPUIApplicationDelegate::new();
             let app_delegate_protocol = ProtocolObject::from_ref(&*app_delegate);
             app.as_super().setDelegate(Some(&app_delegate_protocol));
