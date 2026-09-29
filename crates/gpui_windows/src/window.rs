@@ -1671,26 +1671,42 @@ fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {
     }
 }
 
-/// Win11 draws a 1px border around every top-level window (DWMWA_BORDER_COLOR
-/// follows the system dark-mode/accent settings). Transparent overlay PopUps
-/// (impin's pins and notice pill) must not show it: opt out with
-/// DWMWA_COLOR_NONE, available since 22621 like the backdrop attribute.
+/// Transparent overlay PopUps (impin's pins and notice pill) must not show
+/// any DWM frame: DWMWA_NCRENDERING_POLICY = DWMNCRP_DISABLED turns off the
+/// non-client rendering (border + frame edge) on every build since 17763 —
+/// observed still faintly visible on 26200 with only the color set below —
+/// and Win11's DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE (22621+) additionally
+/// kills the accent/dark-mode 1px border line.
 fn dwm_disable_window_border(hwnd: HWND) {
     let mut version = unsafe { std::mem::zeroed() };
     let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
 
-    if !status.is_ok() || version.dwBuildNumber < 22621 {
+    if !status.is_ok() {
         return;
     }
 
-    let color_none: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
-    unsafe {
-        let _ = DwmSetWindowAttribute(
-            hwnd,
-            windows::Win32::Graphics::Dwm::DWMWA_BORDER_COLOR,
-            &color_none as *const _ as *const _,
-            std::mem::size_of_val(&color_none) as u32,
-        );
+    if version.dwBuildNumber >= 17763 {
+        let policy: i32 = windows::Win32::Graphics::Dwm::DWMNCRP_DISABLED.0;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                windows::Win32::Graphics::Dwm::DWMWA_NCRENDERING_POLICY,
+                &policy as *const _ as *const _,
+                std::mem::size_of_val(&policy) as u32,
+            );
+        }
+    }
+
+    if version.dwBuildNumber >= 22621 {
+        let color_none: u32 = 0xFFFF_FFFE; // DWMWA_COLOR_NONE
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                windows::Win32::Graphics::Dwm::DWMWA_BORDER_COLOR,
+                &color_none as *const _ as *const _,
+                std::mem::size_of_val(&color_none) as u32,
+            );
+        }
     }
 }
 

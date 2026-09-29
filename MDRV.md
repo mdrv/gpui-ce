@@ -76,7 +76,7 @@ display, y down, logical pixels — the same space as
   which raises it — raise-on-click for overlay windows for free; ordinary
   windows keep their z-order (tag `.8`).
 
-### PopUp windows opt out of the Win11 DWM border (tag `mdrv-gpui-0.0.260925.10`)
+### PopUp windows opt out of the DWM frame (tags `mdrv-gpui-0.0.260925.10`/`.11`)
 
 Win11 draws a 1px border around every top-level window (`DWMWA_BORDER_COLOR`
 follows dark-mode/accent settings). Transparent overlay PopUps (impin's pins
@@ -85,7 +85,11 @@ placement/resize math sizes the window rect as client + measured DWM frame
 offsets even for style-0 borderless windows. Fix: for
 `kind == WindowKind::PopUp`, `new()` sets
 `DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE` (build ≥ 22621 guarded, mirroring the
-backdrop helper). Normal chromeless windows keep the border — Zed wants it.
+backdrop helper; tag .10). With the color alone the outline was still faintly
+visible on 26200, so .11 also sets `DWMWA_NCRENDERING_POLICY =
+DWMNCRP_DISABLED` (17763+) — non-client rendering off entirely (border +
+frame edge) is the reliable kill switch. Normal chromeless windows keep the
+border — Zed wants it.
 
 ### `vendor/arrayref` (pinned 0.3.9)
 
