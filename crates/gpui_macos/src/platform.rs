@@ -549,10 +549,9 @@ impl Platform for MacPlatform {
                  policies) before application().run(); use \
                  Application::with_activation_policy instead",
             );
-            let app: Retained<GPUIApplication> =
-                // SAFETY: the class is asserted above; `Retained::cast` is
-                // deprecated in objc2 0.6.
-                unsafe { Retained::cast_unchecked(any_app) };
+            // SAFETY: the class is asserted above; `Retained::cast` is
+            // deprecated in objc2 0.6. (Already inside an `unsafe` block.)
+            let app: Retained<GPUIApplication> = Retained::cast_unchecked(any_app);
             let app_delegate = GPUIApplicationDelegate::new();
             let app_delegate_protocol = ProtocolObject::from_ref(&*app_delegate);
             app.as_super().setDelegate(Some(&app_delegate_protocol));

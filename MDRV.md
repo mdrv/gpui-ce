@@ -278,7 +278,12 @@ The rename also touched upstream-file targets that referenced the old
 `crates/gpui_wgpu/benches/renderer.rs`,
 `crates/gpui_wgpu/examples/custom_gpu.rs`,
 `crates/gpui_wgpu/tests/headless_primitives.rs`,
-`crates/gpui_elements/examples/editable_text.rs` (all `use` lines only).
+`crates/gpui_elements/examples/editable_text.rs` (all `use` lines only),
+plus the doctest snippets inside
+`crates/gpui_elements/src/editable_text.rs` and
+`.../editable_text/state.rs` (`use gpui_ce_elements::…` →
+`mdrv_gpui_elements::…`; these only surface under `cargo test --doc`,
+which CI runs via `just test`).
 
 Full sync procedure: `/x/m/v270/gpui-ce/50-upstream-sync.md`.
 

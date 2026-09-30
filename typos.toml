@@ -43,6 +43,8 @@ TME = "TME"
 LOD = "LOD"
 # Correct Italian singular of "command" in UI locales
 comando = "comando"
+# SVG-in-OT color font format (Twemoji)
+OT = "OT"
 # Deliberately misspelled manifest keys / error message test cases
 capabilites = "capabilites"
 backgrund = "backgrund"
