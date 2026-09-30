@@ -207,6 +207,7 @@ table rasterizer (COLR/CBDT/sbix/outlines only).
 - CI (inherited from upstream) runs with `RUSTFLAGS=-D warnings` and
   `just build` = `--workspace --all-targets`: warnings are errors, and
   benches/examples/tests all compile. The `clippy*` recipes in `justfile`
+- `typos.toml` carries `OT = "OT"` in `[default.extend-words]`: the SVG-in-OT wording tripped crate-ci/typos (`OT` is not a word in its dictionary); also a `User-Agent` note — GH macOS runner logs truncated panics identically to local runs.
   exclude `vendor/arrayref` (vendored upstream code predates modern
   lints; the empty-line-after-doc-comment lint fires under `-D warnings`).
 
@@ -281,7 +282,7 @@ The rename also touched upstream-file targets that referenced the old
 `crates/gpui_elements/examples/editable_text.rs` (all `use` lines only),
 plus the doctest snippets inside
 `crates/gpui_elements/src/editable_text.rs` and
-`.../editable_text/state.rs` (`use gpui_ce_elements::…` →
+`crates/gpui_elements/src/editable_text/state.rs` (`use gpui_ce_elements::…` →
 `mdrv_gpui_elements::…`; these only surface under `cargo test --doc`,
 which CI runs via `just test`).
 
