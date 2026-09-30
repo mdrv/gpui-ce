@@ -186,6 +186,14 @@ stay pixel-exact (texel centers land on pixel centers either way). Applies to
 all sprite kinds (monochrome, polychrome, underlay) on both the Metal
 (gpui_apple) and wgpu (gpui_wgpu) renderers, which share the shader module.
 
+The upstream contract test `generated_sprite_shader_blends_opacity`
+(`crates/gpui_apple/src/metal_renderer.rs`) pinned linear sampling
+byte-exactly (texel centers at [191, 0, 0] ±2, interior brightest
+150–195); under the inset those pixels are bilinear mixes (observed
+[120, 48, 48], brightest ~143 on the CI M1). The test's texel-center
+asserts are now structural (sampled + opacity-capped) and the
+brightest floor is 110 — the opacity cap itself is unchanged.
+
 ### Color-emoji font allowlist (tag `mdrv-gpui-0.0.260925.6`)
 
 `check_is_known_emoji_font` in `crates/gpui_wgpu/src/cosmic_text_system.rs` was

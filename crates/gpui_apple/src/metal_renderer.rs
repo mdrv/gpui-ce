@@ -3,15 +3,15 @@ use anyhow::Result;
 use block::ConcreteBlock;
 use core_graphics::geometry::CGSize;
 use gpui::{
-    size, AtlasTextureId, Bounds, Corners, DevicePixels, FilterRenderTarget, MonochromeSprite,
-    PaintSurface, Path, PolychromeSprite, PrimitiveBatch, Quad, RenderCommand, ScaledPixels, Scene,
-    Shadow, Size, SurfaceSource, Underline, MAX_FILTER_GROUP_DEPTH,
+    AtlasTextureId, Bounds, Corners, DevicePixels, FilterRenderTarget, MAX_FILTER_GROUP_DEPTH,
+    MonochromeSprite, PaintSurface, Path, PolychromeSprite, PrimitiveBatch, Quad, RenderCommand,
+    ScaledPixels, Scene, Shadow, Size, SurfaceSource, Underline, size,
 };
 use gpui_render::{
-    artifacts::{NativeShader, NATIVE_SHADERS},
+    artifacts::{NATIVE_SHADERS, NativeShader},
     blur::{
-        downsampled_dimension, BlurAxis, BlurKernel, BlurUniforms, ScissorRectangle,
-        GAUSSIAN_CUTOFF_STANDARD_DEVIATIONS,
+        BlurAxis, BlurKernel, BlurUniforms, GAUSSIAN_CUTOFF_STANDARD_DEVIATIONS, ScissorRectangle,
+        downsampled_dimension,
     },
     path_types::{self, PathRasterizationVertex},
     shaders::{
@@ -2113,10 +2113,10 @@ impl gpui::PlatformHeadlessRenderer for MetalHeadlessRenderer {
 mod tests {
     use super::*;
     use gpui::{
-        checkerboard, hsla, linear_color_stop, linear_gradient, pattern_slash, px,
-        solid_background, white, AtlasKey, BackdropFilter, BorderStyle, ContentMask, Edges,
-        ImageId, Path, PlatformAtlas, PlatformHeadlessRenderer, RenderImageParams, RenderSvgParams,
-        ScaledFilter, TransformationMatrix,
+        AtlasKey, BackdropFilter, BorderStyle, ContentMask, Edges, ImageId, Path, PlatformAtlas,
+        PlatformHeadlessRenderer, RenderImageParams, RenderSvgParams, ScaledFilter,
+        TransformationMatrix, checkerboard, hsla, linear_color_stop, linear_gradient,
+        pattern_slash, px, solid_background, white,
     };
     use std::borrow::Cow;
 
