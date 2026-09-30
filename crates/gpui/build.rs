@@ -19,7 +19,14 @@ fn embed_resource() {
     let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let rc_file = out_dir.join("gpui.rc");
     let manifest_path = manifest.display().to_string().replace('\\', "/");
-    std::fs::write(&rc_file, format!("#define RT_MANIFEST 24\n1 RT_MANIFEST \"{}\"\n", manifest_path)).unwrap();
+    std::fs::write(
+        &rc_file,
+        format!(
+            "#define RT_MANIFEST 24\n1 RT_MANIFEST \"{}\"\n",
+            manifest_path
+        ),
+    )
+    .unwrap();
     embed_resource::compile(&rc_file, embed_resource::NONE)
         .manifest_required()
         .unwrap();

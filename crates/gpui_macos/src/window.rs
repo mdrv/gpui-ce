@@ -1405,8 +1405,7 @@ impl MacWindow {
                     // titlebar would still draw its traffic lights.
                     if !has_titlebar {
                         native_window.setStyleMask_(
-                            NSWindowStyleMask::Borderless
-                                | NSWindowStyleMask::NonactivatingPanel,
+                            NSWindowStyleMask::Borderless | NSWindowStyleMask::NonactivatingPanel,
                         );
                     }
                 }

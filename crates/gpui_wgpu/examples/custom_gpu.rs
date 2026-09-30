@@ -13,8 +13,8 @@ mod custom_gpu {
         App, AppContext, Bounds, Context, ParentElement, Render, Styled, TitlebarOptions, Window,
         WindowBounds, WindowOptions, div, px, size,
     };
-    use gpui_ce_wgpu::{WgpuContextHandle, WgpuRenderTarget};
     use gpui_platform::application;
+    use mdrv_gpui_wgpu::{WgpuContextHandle, WgpuRenderTarget};
     use wgpu::util::DeviceExt;
 
     const SHADER: &str = r#"

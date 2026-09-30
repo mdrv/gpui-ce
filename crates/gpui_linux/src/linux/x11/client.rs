@@ -813,7 +813,7 @@ impl X11Client {
                     // still unmapped, so its XSetInputFocus BadMatched and
                     // was dropped. The window is viewable now — land the
                     // focus request that was recorded then.
-                    if window_ref.window.state.borrow().focus_requested {
+                    if mdrv_patches_enabled() && window_ref.window.state.borrow().focus_requested {
                         window_ref.window.state.borrow_mut().focus_requested = false;
                         state
                             .xcb_connection
@@ -3141,4 +3141,15 @@ mod tests {
         // Assert pressing space while on the Czech layout still types a space.
         assert_eq!(key_event_state.key_get_utf8(space), " ");
     }
+}
+
+/// MDRV escape hatch: set `MDRV_PATCHES=0` to run upstream behavior for the
+/// fork's behavior patches (see MDRV.md "Fork tooling & CI"). Debug A/B only.
+fn mdrv_patches_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var_os("MDRV_PATCHES")
+            .map(|v| v != "0")
+            .unwrap_or(true)
+    })
 }

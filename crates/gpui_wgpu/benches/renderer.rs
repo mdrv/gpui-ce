@@ -3,7 +3,7 @@ use gpui::{
     Bounds, ContentMask, Corners, DevicePixels, PlatformHeadlessRenderer, Point, Quad,
     ScaledPixels, Scene, ShaderBool, Size, Underline, solid_background, white,
 };
-use gpui_ce_wgpu::WgpuHeadlessRenderer;
+use mdrv_gpui_wgpu::WgpuHeadlessRenderer;
 
 const TARGET_SIZE: Size<DevicePixels> = Size {
     width: DevicePixels(1280),

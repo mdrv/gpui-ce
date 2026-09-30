@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# check-upstream: verify every file patched vs upstream is registered in MDRV.md.
+#
+# The fork's contract (MDRV.md, "Branch policy"): main carries a small,
+# documented patch set on top of upstream gpui-ce. This script enforces
+# the "documented" half: any file that differs from the upstream
+# merge-base must be mentioned in MDRV.md (or match the mechanical
+# allowlist below) or the script exits 1 listing the offenders.
+#
+# Modeled on longbridge/gpui-fast's script/check-upstream, adapted:
+# they enforce hook-size limits on upstream files; we enforce registry
+# completeness, because our patches are direct (not hook-style).
+#
+# Usage:
+#   script/check-upstream               # default ref: upstream/main
+#   script/check-upstream upstream/main # explicit ref
+#   script/check-upstream --stat        # print the patch surface
+set -euo pipefail
+
+ref="${1:-upstream/main}"
+
+if [[ "$ref" == "--stat" ]]; then
+  ref="upstream/main"
+fi
+
+git rev-parse --verify "$ref" >/dev/null 2>&1 ||
+  { echo "check-upstream: $ref not found — git fetch upstream first" >&2; exit 2; }
+
+base="$(git merge-base "$ref" HEAD)"
+
+if [[ "${1:-}" == "--stat" ]]; then
+  exec git diff --stat "$base" HEAD
+fi
+
+# Mechanical churn the family rename / vendoring produces every sync.
+allow='(^|/)Cargo\.(lock|toml)$|^MDRV\.md$|^README\.md$|^(vendor|\.github)/'
+
+fail=0
+while IFS= read -r f; do
+  [[ $f =~ $allow ]] && continue
+  if ! grep -qF -- "$f" MDRV.md; then
+    echo "UNREGISTERED in MDRV.md: $f"
+    fail=1
+  fi
+done < <(git diff --name-only "$base" HEAD)
+
+if [[ $fail -eq 0 ]]; then
+  echo "check-upstream: OK — every patched file is registered (base ${base:0:9}, ref $ref)"
+fi
+exit $fail

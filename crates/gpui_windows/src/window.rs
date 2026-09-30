@@ -663,9 +663,8 @@ impl PlatformWindow for WindowsWindow {
                 // `WS_EX_TOPMOST` windows (pins, overlays) re-assert their
                 // band: moving to the front of the topmost band doubles as
                 // raise-on-click. Ordinary windows keep their z-order.
-                let topmost = unsafe { get_window_long(hwnd, GWL_EXSTYLE) }
-                    & (WS_EX_TOPMOST.0 as isize)
-                    != 0;
+                let topmost =
+                    unsafe { get_window_long(hwnd, GWL_EXSTYLE) } & (WS_EX_TOPMOST.0 as isize) != 0;
                 let (insert_after, flags) = if topmost {
                     (
                         Some(HWND_TOPMOST),

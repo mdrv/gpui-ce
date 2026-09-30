@@ -105,10 +105,7 @@ impl PlatformDisplay for MacDisplay {
             let bounds = CGDisplayBounds(self.0);
 
             Bounds {
-                origin: point(
-                    px(bounds.origin.x as f32),
-                    px(bounds.origin.y as f32),
-                ),
+                origin: point(px(bounds.origin.x as f32), px(bounds.origin.y as f32)),
                 size: size(px(bounds.size.width as f32), px(bounds.size.height as f32)),
             }
         }

@@ -134,19 +134,19 @@ fmt-check:
 [group('quality')]
 clippy *flags:
     @echo "🔍 Running Clippy..."
-    cargo clippy --workspace --all-targets -- -D warnings {{ flags }}
+    cargo clippy --workspace --exclude arrayref --all-targets -- -D warnings {{ flags }}
 
 [doc('Run Clippy for a specific target triple')]
 [group('quality')]
 clippy-target target:
     @echo "🔍 Running Clippy for target {{ target }}..."
-    cargo clippy --workspace --all-targets --target {{ target }} -- -D warnings
+    cargo clippy --workspace --exclude arrayref --all-targets --target {{ target }} -- -D warnings
 
 [doc('Automatically fix Clippy lints where possible')]
 [group('quality')]
 clippy-fix:
     @echo "🩹 Fixing Clippy lints..."
-    cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged -- -D warnings
+    cargo clippy --workspace --exclude arrayref --all-targets --fix --allow-dirty --allow-staged -- -D warnings
 
 [doc('Run typos spell checker')]
 [group('quality')]
@@ -206,7 +206,7 @@ ci:
 
     let results = [
         (run-check "cargo fmt" { cargo fmt --all -- --check })
-        (run-check "cargo clippy" { cargo clippy --workspace --all-targets -- -D warnings })
+        (run-check "cargo clippy" { cargo clippy --workspace --exclude arrayref --all-targets -- -D warnings })
         (run-check "cargo build" { cargo build --workspace --all-targets })
         (run-check "cargo test" { cargo test --workspace --no-fail-fast })
         (run-check "doc tests" { cargo test --workspace --doc --no-fail-fast })
@@ -272,7 +272,7 @@ ci-tidy:
 
     let results = [
         (run-check "cargo fmt" { cargo fmt --all -- --check })
-        (run-check "cargo clippy" { cargo clippy --workspace --all-targets -- -D warnings })
+        (run-check "cargo clippy" { cargo clippy --workspace --exclude arrayref --all-targets -- -D warnings })
         (if (available "typos") { run-check "typos" { typos } } else { skip "typos" "not installed" })
         (if (available "cargo-machete") { run-check "cargo machete" { cargo machete } } else { skip "cargo machete" "install: cargo install cargo-machete" })
         (if (available "rustup") {

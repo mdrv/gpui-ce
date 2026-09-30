@@ -1870,12 +1870,17 @@ impl PlatformWindow for WaylandWindow {
         .map(|v| f32::from(v) as i32)
         .map_size(|v| if v <= 0 { 1 } else { v });
 
-        state.surface_state.set_geometry(
-            window_geometry.origin.x,
-            window_geometry.origin.y,
-            window_geometry.size.width,
-            window_geometry.size.height,
-        );
+        // MDRV_PATCHES=0 skips the synchronous geometry application (upstream
+        // deferred it; the trade-off is the one-frame stale-buffer smear that
+        // this patch fixed — see MDRV.md).
+        if mdrv_patches_enabled() {
+            state.surface_state.set_geometry(
+                window_geometry.origin.x,
+                window_geometry.origin.y,
+                window_geometry.size.width,
+                window_geometry.size.height,
+            );
+        }
 
         // Apply the client-side resize synchronously so the next present is
         // size-consistent with the staged layer size above — deferring it let
@@ -1887,10 +1892,11 @@ impl PlatformWindow for WaylandWindow {
         drop(state);
         let state_ptr = self.0.clone();
         if let Some((size, scale)) = state_ptr.apply_size_and_scale(Some(size), None) {
-            executor.spawn(async move {
-                state_ptr.fire_resized(size, scale);
-            })
-            .detach();
+            executor
+                .spawn(async move {
+                    state_ptr.fire_resized(size, scale);
+                })
+                .detach();
         }
     }
 
@@ -2268,7 +2274,9 @@ impl PlatformWindow for WaylandWindow {
         if let WaylandSurfaceState::LayerShell(WaylandLayerSurfaceState { layer_surface, .. }) =
             &state.surface_state
         {
-            layer_surface.set_keyboard_interactivity(super::layer_shell::wayland_keyboard_interactivity(mode));
+            layer_surface.set_keyboard_interactivity(
+                super::layer_shell::wayland_keyboard_interactivity(mode),
+            );
             // Commit so it applies immediately instead of at the next frame.
             state.surface.commit();
         }
@@ -2572,4 +2580,15 @@ fn inset_by_tiling(mut bounds: Bounds<Pixels>, inset: Pixels, tiling: Tiling) ->
     }
 
     bounds
+}
+
+/// MDRV escape hatch: set `MDRV_PATCHES=0` to run upstream behavior for the
+/// fork's behavior patches (see MDRV.md "Fork tooling & CI"). Debug A/B only.
+fn mdrv_patches_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var_os("MDRV_PATCHES")
+            .map(|v| v != "0")
+            .unwrap_or(true)
+    })
 }

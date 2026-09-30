@@ -9,7 +9,7 @@ use gpui::{
     Quad, RenderImageParams, RenderSvgParams, ScaledFilter, ScaledPixels, Scene, ShaderBool,
     Shadow, Size, Underline, checkerboard, linear_color_stop, linear_gradient, solid_background,
 };
-use gpui_ce_wgpu::WgpuHeadlessRenderer;
+use mdrv_gpui_wgpu::WgpuHeadlessRenderer;
 use smallvec::smallvec;
 use std::borrow::Cow;
 

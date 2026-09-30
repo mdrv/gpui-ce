@@ -57,6 +57,16 @@ resizing a floating panel):
     fired it synchronously and froze the whole UI thread while the
     daemon's other threads stayed alive).
 
+### X11 input focus after MapNotify + minimize double-borrow (pre-registry, commit `365a1b68e8`)
+
+- `crates/gpui_linux/src/linux/x11/window.rs` — `activate()` can run while
+  the window is still unmapped; the `XSetInputFocus` then BadMatches and is
+  dropped, leaving the window unfocused forever. The request is now recorded
+  (`focus_requested`) and `crates/gpui_linux/src/linux/x11/client.rs`
+  re-issues it on `MapNotify`, when the window is finally viewable.
+- `crates/gpui_linux/src/linux/x11/client.rs` — `minimize` chained a mutable
+  borrow behind an immutable one (RefCell double-borrow panic).
+
 ### `Window::set_position` (tags `mdrv-gpui-0.0.260925.7` macOS, `.9` Windows)
 
 Runtime repositioning in the gpui global space (top-left of the primary
@@ -68,7 +78,7 @@ display, y down, logical pixels — the same space as
 - `crates/gpui/src/window.rs` — public `Window::set_position`.
 - `crates/gpui_macos/src/window.rs` — `setFrameTopLeftPoint` with the
   Cocoa y-flip against the primary screen (tag `.7`), plus true display
-  origins in `gpui_macos/src/display.rs` and borderless chrome-less
+  origins in `crates/gpui_macos/src/display.rs` and borderless chrome-less
   NSPanels for titlebar-less `WindowKind::PopUp`.
 - `crates/gpui_windows/src/window.rs` — `SetWindowPos` with the window's
   scale factor applied (both sides are top-left-origin, no flip). A window
@@ -90,6 +100,14 @@ visible on 26200, so .11 also sets `DWMWA_NCRENDERING_POLICY =
 DWMNCRP_DISABLED` (17763+) — non-client rendering off entirely (border +
 frame edge) is the reliable kill switch. Normal chromeless windows keep the
 border — Zed wants it.
+
+### Windows manifest embed via generated rc (commit `0bb5239831`)
+
+`crates/gpui/build.rs` (`embed_resource`): the checked-in
+`resources/windows/gpui.rc` referenced the manifest relatively, which
+breaks when cargo builds from a different working directory. The rc file
+is now generated into `OUT_DIR` with an **absolute**, forward-slashed
+path to `gpui.manifest.xml`.
 
 ### `vendor/arrayref` (pinned 0.3.9)
 
@@ -136,7 +154,7 @@ fire on macOS builds (their arms are cfg'd out elsewhere):
 ### GPUIApplication ivars class-check (tag `mdrv-gpui-0.0.260929.1`)
 
 `[GPUIApplication sharedApplication]` returns any existing shared
-NSApplication _regardless of its actual class_. `MacPlatform::run`
+NSApplication _regardless of its actual class_. `MacPlatform::run` (`crates/gpui_macos/src/platform.rs`)
 unconditionally wrote `ivars().platform` through the returned object, so an
 app that had instantiated plain `NSApplication` before `application().run()`
 (e.g. `NSApplication::sharedApplication` + `setActivationPolicy(.Accessory)`
@@ -170,13 +188,41 @@ all sprite kinds (monochrome, polychrome, underlay) on both the Metal
 
 ### Color-emoji font allowlist (tag `mdrv-gpui-0.0.260925.6`)
 
-`check_is_known_emoji_font` in `gpui_wgpu/src/cosmic_text_system.rs` was
+`check_is_known_emoji_font` in `crates/gpui_wgpu/src/cosmic_text_system.rs` was
 hardcoded to `"NotoColorEmoji"`. Any other CBDT-only color font (Arch's
 `ttf-twemoji`, Apple Color Emoji, Segoe UI Emoji) took the non-emoji
 swash path (`StrikeWith::ExactSize` + outlines) and rendered blank. The
 allowlist now matches `NotoColorEmoji | Twemoji | AppleColorEmoji |
-SegoeUIEmoji`. SVGinOT fonts remain unsupported — swash has no `SVG `
+SegoeUIEmoji`. SVG-in-OT fonts remain unsupported — swash has no `SVG `
 table rasterizer (COLR/CBDT/sbix/outlines only).
+
+## Fork tooling & CI
+
+- `script/check-upstream [ref|--stat]` — enforces the registry: every
+  file differing from the upstream merge-base must be mentioned in this
+  file (or match the mechanical allowlist: `Cargo.{toml,lock}`,
+  `README.md`, `vendor/`, `.github/`). Modeled on longbridge/gpui-fast;
+  adapted because our patches are direct, not hook-style. Run it before
+  every push; wire into CI when the fork gets its own workflow.
+- CI (inherited from upstream) runs with `RUSTFLAGS=-D warnings` and
+  `just build` = `--workspace --all-targets`: warnings are errors, and
+  benches/examples/tests all compile. The `clippy*` recipes in `justfile`
+  exclude `vendor/arrayref` (vendored upstream code predates modern
+  lints; the empty-line-after-doc-comment lint fires under `-D warnings`).
+
+- **Escape hatch `MDRV_PATCHES=0`** — at process start, the fork's
+  behavior patches fall back to upstream behavior: the color-emoji
+  allowlist (only `NotoColorEmoji` known, Twemoji renders blank again),
+  the X11 focus re-land after MapNotify, and the synchronous Wayland
+  resize (`set_geometry` in `resize`). Purpose: A/B diagnosis — "is
+  this bug our patch or upstream?" Verified 2026-09-30: mdrv-em with
+  `MDRV_PATCHES=0` shows blank Twemoji, without it renders. Exempt: the
+  sprite half-texel inset (pure math inside the `wgsl_rs::wgsl`
+  -transpiled `mod source` — no runtime env access possible without
+  restructuring the shader pipeline; A/B via `git revert 168fb2f3aa` if
+  ever needed). Purely additive API surface
+  (set_position/set_margin/set_keyboard_interactivity) needs no hatch:
+  upstream has no such behavior to fall back to.
 
 ## Branch policy
 
@@ -226,6 +272,13 @@ gpui-ce dev-depends on platform (41 examples). Portability policy is
 
 Tag per release as `mdrv-gpui-0.0.<version>`; `vendor/arrayref` is a
 workspace member since `55d7e50751` so the git-form patch resolves.
+
+The rename also touched upstream-file targets that referenced the old
+`gpui_ce_*` lib names: `crates/gpui_wgpu/benches/layout_line.rs`,
+`crates/gpui_wgpu/benches/renderer.rs`,
+`crates/gpui_wgpu/examples/custom_gpu.rs`,
+`crates/gpui_wgpu/tests/headless_primitives.rs`,
+`crates/gpui_elements/examples/editable_text.rs` (all `use` lines only).
 
 Full sync procedure: `/x/m/v270/gpui-ce/50-upstream-sync.md`.
 
