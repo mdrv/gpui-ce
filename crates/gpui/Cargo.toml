@@ -187,6 +187,14 @@ name = "interactive_elements"
 path = "examples/learn/interactive_elements.rs"
 
 [[example]]
+name = "actions_and_keybinds"
+path = "examples/learn/actions_and_keybinds.rs"
+
+[[example]]
+name = "uniform_list"
+path = "examples/learn/uniform_list.rs"
+
+[[example]]
 name = "creating_components"
 path = "examples/learn/creating_components.rs"
 
@@ -221,6 +229,10 @@ path = "examples/learn/transitions.rs"
 [[example]]
 name = "style_transitions"
 path = "examples/learn/style_transitions.rs"
+
+[[example]]
+name = "motion_showcase"
+path = "examples/learn/motion_showcase.rs"
 
 [[example]]
 name = "haptic_feedback"
@@ -309,10 +321,6 @@ path = "examples/legacy/tab_stop.rs"
 [[example]]
 name = "tree"
 path = "examples/legacy/tree.rs"
-
-[[example]]
-name = "uniform_list"
-path = "examples/legacy/uniform_list.rs"
 
 [[example]]
 name = "window"

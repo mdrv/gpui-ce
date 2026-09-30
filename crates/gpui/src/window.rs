@@ -1532,6 +1532,7 @@ impl Window {
         }
 
         let accessibility_force_disabled = cx.accessibility_force_disabled;
+        let accessibility_forced = cx.accessibility_forced;
         let a11y_active_flag = Arc::new(AtomicBool::new(false));
 
         #[cfg(not(target_family = "wasm"))]
@@ -2001,6 +2002,7 @@ impl Window {
             a11y: A11y::new(
                 a11y_active_flag,
                 accessibility_force_disabled,
+                accessibility_forced,
                 initial_window_title,
             ),
         })
@@ -6346,8 +6348,19 @@ impl Window {
     }
 
     /// Focus the current window and bring it to the foreground at the platform level.
-    pub fn activate_window(&self) {
-        self.platform_window.activate();
+    pub fn activate(&self) {
+        self.platform_window.activate(None);
+    }
+
+    /// Request focus using a token supplied by the desktop shell, such as a
+    /// Wayland tray host. Show the window before calling this method.
+    ///
+    /// Returns whether the platform submitted the request. The compositor may
+    /// still deny focus. Returns false for empty tokens or unsupported platforms;
+    /// callers can then fall back to [`Self::activate`]. Tokens must not
+    /// be reused for subsequent activations.
+    pub fn activate_with_token(&self, token: &str) -> bool {
+        !token.is_empty() && self.platform_window.activate(Some(token))
     }
 
     /// Requests that the operating system draw attention to this window.
@@ -6362,7 +6375,7 @@ impl Window {
 
     /// Show or hide the current window at the platform level.
     ///
-    /// Call [`Window::activate_window`] separately when the window should also receive focus.
+    /// Call [`Window::activate`] separately when the window should also receive focus.
     /// The window manager may still focus a window when it is shown.
     pub fn set_visible(&self, visible: bool) {
         self.platform_window.set_visible(visible);
@@ -6754,9 +6767,38 @@ impl Window {
         self.a11y.is_active()
     }
 
+    /// Build this window's accessibility tree every frame, even with no
+    /// assistive technology connected, so [`Self::debug_a11y_tree_json`] and
+    /// the accessibility actions work for automation. Forces a redraw, since
+    /// the tree is built during prepaint. [`crate::Application::new_inaccessible`]
+    /// still wins.
+    pub fn set_a11y_forced(&mut self, forced: bool) {
+        self.a11y.set_forced(forced);
+        self.refresh();
+    }
+
     /// Debug representation of the last frame's accessibility information.
     pub fn debug_a11y_tree_json(&self) -> Option<String> {
         self.a11y.debug_tree_json()
+    }
+
+    /// The accessibility tree built by the last frame, when one was built (see
+    /// [`Self::is_a11y_active`] and [`Self::set_a11y_forced`]). Node ids are
+    /// stable while the element identity is; bounds come from
+    /// [`Self::a11y_node_bounds`].
+    pub fn a11y_tree(&self) -> Option<&accesskit::TreeUpdate> {
+        self.a11y.last_tree_update()
+    }
+
+    /// Window-space bounds, in logical pixels, of a node in the last built tree.
+    pub fn a11y_node_bounds(&self, node: accesskit::NodeId) -> Option<Bounds<Pixels>> {
+        self.a11y.last_node_bounds(node)
+    }
+
+    /// How many accessibility trees this window has built; zero before the
+    /// first. Lets a caller tell a fresh tree from the one it already read.
+    pub fn a11y_frame_number(&self) -> u64 {
+        self.a11y.frame_number()
     }
 
     /// Register a listener for an accessibility action on a specific node.
@@ -8489,9 +8531,7 @@ mod tests {
             }
         });
 
-        window
-            .update(cx, |_, window, _| window.activate_window())
-            .unwrap();
+        window.update(cx, |_, window, _| window.activate()).unwrap();
         cx.executor().run_until_parked();
 
         window

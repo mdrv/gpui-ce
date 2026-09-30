@@ -1855,7 +1855,10 @@ impl PlatformWindow for MacWindow {
         Some(done_rx)
     }
 
-    fn activate(&self) {
+    fn activate(&self, token: Option<&str>) -> bool {
+        if token.is_some() {
+            return false;
+        }
         let lock = self.0.lock();
         let window = lock.native_window;
         let closed = lock.closed.clone();
@@ -1869,6 +1872,7 @@ impl PlatformWindow for MacWindow {
                 }
             })
             .detach();
+        true
     }
 
     fn request_attention(&self) {
