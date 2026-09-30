@@ -6682,7 +6682,12 @@ impl Window {
     /// Returns backend-specific typed GPU context information for custom
     /// controls. Use the rendering backend's context type to downcast the
     /// returned value.
-    #[cfg(any(target_family = "wasm", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(
+        target_family = "wasm",
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "android"
+    ))]
     pub fn gpu_context_info(&self) -> Option<Box<dyn std::any::Any>> {
         self.platform_window.gpu_context_info()
     }

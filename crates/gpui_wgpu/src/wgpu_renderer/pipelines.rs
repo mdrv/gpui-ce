@@ -263,6 +263,7 @@ impl WgpuBindGroupLayouts {
         all(target_family = "wasm", feature = "custom-gpu"),
         target_os = "macos",
         target_os = "linux",
+        target_os = "android",
         target_os = "freebsd",
         all(target_os = "windows", feature = "wgpu-surfaces")
     ))]
@@ -757,6 +758,7 @@ mod tests {
             all(target_family = "wasm", feature = "custom-gpu"),
             target_os = "macos",
             target_os = "linux",
+            target_os = "android",
             target_os = "freebsd",
             all(target_os = "windows", feature = "wgpu-surfaces")
         ))]

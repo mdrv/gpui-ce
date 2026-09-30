@@ -337,6 +337,7 @@ impl WgpuContextHandle {
     /// Returns the typed wgpu context associated with a GPUI window.
     #[cfg(any(
         target_os = "linux",
+        target_os = "android",
         target_os = "freebsd",
         all(target_family = "wasm", feature = "custom-gpu")
     ))]
@@ -400,6 +401,7 @@ impl WgpuRenderTarget {
     /// Creates a GPUI element that composites this target at its layout bounds.
     #[cfg(any(
         target_os = "linux",
+        target_os = "android",
         target_os = "freebsd",
         all(target_family = "wasm", feature = "custom-gpu")
     ))]

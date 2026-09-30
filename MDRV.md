@@ -233,6 +233,26 @@ table rasterizer (COLR/CBDT/sbix/outlines only).
   (set_position/set_margin/set_keyboard_interactivity) needs no hatch:
   upstream has no such behavior to fall back to.
 
+### PaintSurface / SurfaceSource::Texture on Android (part of tag `mdrv-gpui-0.0.260930.0`)
+
+Upstream's externally-supplied GPU texture surface path was cfg-gated to
+linux/freebsd/wasm-custom-gpu (core) and macos/linux texture import
+(gpui_wgpu). Android now uses the same wgpu texture path:
+- `crates/gpui/src/elements/surface.rs` — `SurfaceSource::Texture` variant
+  (+ its Debug and size() cfgs) gained `target_os = "android"`.
+- `crates/gpui/src/window.rs` + `crates/gpui/src/platform.rs` —
+  `gpu_context_info` (inherent + `PlatformWindow` trait) gained android.
+- `crates/gpui_wgpu/src/wgpu_renderer/surfaces.rs`,
+  `crates/gpui_wgpu/src/wgpu_renderer/pipelines.rs`,
+  `crates/gpui_wgpu/src/wgpu_context.rs` — every surface-path cfg list
+  (custom-gpu / wgpu-surfaces families) gained android; the texture module
+  binds the app-supplied `Arc<wgpu::Texture>` directly, so the caller must
+  render with the SAME wgpu device as the platform renderer (obtain it via
+  `PlatformWindow::gpu_context_info` / the platform's shared `WgpuContext`).
+
+Consumers: mdrv-gpui-mobile (AndroidPlatformWindow forwards
+`gpu_context_info` from its `WgpuRenderer`).
+
 ## Branch policy
 
 `main` carries the MDRV patches (consumers path-depend on the working

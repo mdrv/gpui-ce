@@ -3,6 +3,7 @@ use gpui::PaintSurface;
     all(target_family = "wasm", feature = "custom-gpu"),
     target_os = "macos",
     target_os = "linux",
+    target_os = "android",
     target_os = "freebsd",
     all(target_os = "windows", feature = "wgpu-surfaces")
 ))]
@@ -17,6 +18,7 @@ use super::{WgpuRenderer, frame};
 mod platform;
 #[cfg(any(
     target_os = "linux",
+    target_os = "android",
     target_os = "freebsd",
     all(target_family = "wasm", feature = "custom-gpu")
 ))]
@@ -28,6 +30,7 @@ mod platform;
 #[cfg(not(any(
     target_os = "macos",
     target_os = "linux",
+    target_os = "android",
     target_os = "freebsd",
     all(target_family = "wasm", feature = "custom-gpu"),
     all(target_os = "windows", feature = "wgpu-surfaces")
@@ -41,6 +44,7 @@ pub(super) use platform::SurfaceCache;
     all(target_family = "wasm", feature = "custom-gpu"),
     target_os = "macos",
     target_os = "linux",
+    target_os = "android",
     target_os = "freebsd",
     all(target_os = "windows", feature = "wgpu-surfaces")
 ))]
@@ -55,6 +59,7 @@ struct SurfaceBinding {
     all(target_family = "wasm", feature = "custom-gpu"),
     target_os = "macos",
     target_os = "linux",
+    target_os = "android",
     target_os = "freebsd",
     all(target_os = "windows", feature = "wgpu-surfaces")
 ))]
@@ -91,6 +96,7 @@ impl WgpuRenderer {
         all(target_family = "wasm", feature = "custom-gpu"),
         target_os = "macos",
         target_os = "linux",
+        target_os = "android",
         target_os = "freebsd",
         all(target_os = "windows", feature = "wgpu-surfaces")
     ))]
@@ -117,6 +123,7 @@ impl WgpuRenderer {
         all(target_family = "wasm", feature = "custom-gpu"),
         target_os = "macos",
         target_os = "linux",
+        target_os = "android",
         target_os = "freebsd",
         all(target_os = "windows", feature = "wgpu-surfaces")
     ))]
