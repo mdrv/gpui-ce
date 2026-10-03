@@ -278,6 +278,7 @@ fn begin_color_render_pass<'encoder>(
     target: &'encoder wgpu::TextureView,
     load: wgpu::LoadOp<wgpu::Color>,
 ) -> wgpu::RenderPass<'encoder> {
+    crate::perf::PASS_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some(label),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {

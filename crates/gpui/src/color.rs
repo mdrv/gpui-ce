@@ -1,10 +1,10 @@
 use palette::{IntoColor, OklabHue, Oklcha, RgbHue};
-use schemars::{JsonSchema, json_schema};
+use schemars::{json_schema, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 
 // Re-exported for api maintenance
-pub use palette::{Hsla, rgb::Rgba};
+pub use palette::{rgb::Rgba, Hsla};
 
 /// Convert an RGB hex color code number to a color type
 pub fn rgb(hex: u32) -> Rgba {
@@ -205,8 +205,37 @@ pub trait ColorExt {
     fn opacity(&self, factor: f32) -> Self
     where
         Self: Sized;
+
+    /// Returns this color converted to [`Rgba`] (RGB with alpha).
+    fn to_rgb(self) -> Rgba
+    where
+        Self: Sized;
+
+    /// Returns this color converted to [`Hsla`].
+    fn to_hsla(self) -> Hsla
+    where
+        Self: Sized;
+
+    /// Returns this color with its alpha channel set to `alpha`, discarding
+    /// the previous value.
+    fn alpha(self, alpha: f32) -> Self
+    where
+        Self: Sized;
 }
 impl ColorExt for Rgba {
+    fn to_rgb(self) -> Rgba {
+        self
+    }
+
+    fn to_hsla(self) -> Hsla {
+        self.into_color()
+    }
+
+    fn alpha(mut self, alpha: f32) -> Self {
+        self.alpha = alpha;
+        self
+    }
+
     fn blend(&self, other: &Self) -> Self {
         use palette::blend::{BlendWith, Equations, Parameter};
         let blend_mode =
@@ -225,6 +254,19 @@ impl ColorExt for Rgba {
     }
 }
 impl ColorExt for Hsla {
+    fn to_rgb(self) -> Rgba {
+        self.into_color()
+    }
+
+    fn to_hsla(self) -> Hsla {
+        self
+    }
+
+    fn alpha(mut self, alpha: f32) -> Self {
+        self.alpha = alpha;
+        self
+    }
+
     fn blend(&self, other: &Self) -> Self {
         let this: Rgba = (*self).into_color();
         let other: Rgba = (*other).into_color();

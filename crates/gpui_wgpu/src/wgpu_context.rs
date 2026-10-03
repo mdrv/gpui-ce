@@ -46,7 +46,12 @@ impl NativeBackend {
     const PREFERENCE: &'static [Self] = &[Self::Metal];
     #[cfg(target_os = "windows")]
     const PREFERENCE: &'static [Self] = &[Self::Dx12, Self::Vulkan, Self::Gl];
-    #[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+    // Vulkan stays first on Android (2026-09-30): GLES was measured 8×
+    // slower on Adreno 610 before the plain-quad vertex fast path, and the
+    // glyph/sprite pass silently renders no text on GL.
+    #[cfg(target_os = "android")]
+    const PREFERENCE: &'static [Self] = &[Self::Vulkan, Self::Gl];
+    #[cfg(not(any(target_vendor = "apple", target_os = "windows", target_os = "android")))]
     const PREFERENCE: &'static [Self] = &[Self::Vulkan, Self::Gl];
 
     pub(crate) fn instance(
@@ -609,6 +614,28 @@ impl WgpuContext {
     ) -> anyhow::Result<Self> {
         let (device_lost, uncaptured_error) = install_device_callbacks(&device.device);
         let info = adapter.get_info();
+        {
+            // Publish adapter identity for on-device perf HUDs (logd is
+            // disabled on the test phone, so log::info is unreachable).
+            use crate::perf::{
+                BACKEND, NAME0, NAME1, NAME2, NAME3,
+            };
+            use std::sync::atomic::Ordering;
+            BACKEND.store(info.backend as u32, Ordering::Relaxed);
+            let mut name = info.name.clone();
+            name.truncate(16);
+            let bytes = name.as_bytes();
+            let word = |i: usize| {
+                bytes
+                    .get(i * 4..i * 4 + 4)
+                    .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+                    .unwrap_or(0)
+            };
+            NAME0.store(word(0), Ordering::Relaxed);
+            NAME1.store(word(1), Ordering::Relaxed);
+            NAME2.store(word(2), Ordering::Relaxed);
+            NAME3.store(word(3), Ordering::Relaxed);
+        }
         log::info!("Selected GPU adapter: {:?} ({:?})", info.name, info.backend);
         #[cfg(target_family = "wasm")]
         let backend = match info.backend {

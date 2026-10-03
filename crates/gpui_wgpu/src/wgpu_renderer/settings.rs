@@ -1,4 +1,4 @@
-use gpui::{DevicePixels, Size, get_gamma_correction_ratios};
+use gpui::{get_gamma_correction_ratios, DevicePixels, Size};
 
 pub struct WgpuSurfaceConfig {
     pub size: Size<DevicePixels>,
@@ -67,10 +67,24 @@ pub(super) struct RenderingParameters {
 impl RenderingParameters {
     pub(super) fn new(adapter: &wgpu::Adapter, surface_format: wgpu::TextureFormat) -> Self {
         let format_features = adapter.get_texture_format_features(surface_format);
-        let path_sample_count = [4, 2, 1]
-            .into_iter()
-            .find(|&sample_count| format_features.flags.sample_count_supported(sample_count))
-            .unwrap_or(1);
+        // Adreno 610-class phones: 4× MSAA on the (full-screen) path pass
+        // dominated paint time (~25 ms of 39 ms at 1080×2400), capping UI
+        // frame rate on Android. Default to 1× there; desktop keeps MSAA 4.
+        // Override with MDRV_PATH_MSAA=1|2|4.
+        let path_sample_count = std::env::var("MDRV_PATH_MSAA")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .filter(|&sc| matches!(sc, 1 | 2 | 4))
+            .unwrap_or(if cfg!(target_os = "android") {
+                1
+            } else {
+                [4, 2, 1]
+                    .into_iter()
+                    .find(|&sample_count| {
+                        format_features.flags.sample_count_supported(sample_count)
+                    })
+                    .unwrap_or(1)
+            });
         Self {
             path_sample_count,
             font_rasterization: FontRasterizationSettings::from_environment(),

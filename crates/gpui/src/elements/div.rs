@@ -4489,6 +4489,31 @@ pub struct Stateful<E> {
     pub(crate) element: E,
 }
 
+/// Controls when hover listeners attached to an element are allowed to fire.
+///
+/// This mirrors the upstream API of the same name. On touch-first platforms
+/// (where this fork maps touch to mouse events) unpressed hover moves rarely
+/// occur, so the mode is accepted but has no effect.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HoverListenerMode {
+    /// Hover listeners fire for every pointer move.
+    #[default]
+    All,
+    /// Hover listeners ignore the pointer's input modality (upstream behavior).
+    InputModalityIndependent,
+    /// Hover listeners never fire.
+    None,
+}
+
+impl<E> Stateful<E> {
+    /// Declares how hover listeners on this element respond to pointer input.
+    ///
+    /// Accepted for API compatibility; this fork applies no behavioral change.
+    pub fn hover_listener_mode(self, _mode: HoverListenerMode) -> Self {
+        self
+    }
+}
+
 impl<E> Styled for Stateful<E>
 where
     E: Styled,

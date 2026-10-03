@@ -1,12 +1,12 @@
 use super::{
-    WgpuRenderer, begin_color_render_pass,
+    begin_color_render_pass,
     buffers::{InstanceTransport, InstanceUpload},
-    filters::{FILTER_UNIFORMS_PER_COMPOSITE, FrameUniformRequirements},
-    path_types,
+    filters::{FrameUniformRequirements, FILTER_UNIFORMS_PER_COMPOSITE},
+    path_types, WgpuRenderer,
 };
 use gpui::{
-    FilterRenderTarget, MAX_FILTER_GROUP_DEPTH, MonochromeSprite, PolychromeSprite, PrimitiveBatch,
-    Quad, RenderCommand, Scene, Shadow, SubpixelSprite, Underline,
+    FilterRenderTarget, MonochromeSprite, PolychromeSprite, PrimitiveBatch, Quad, RenderCommand,
+    Scene, Shadow, SubpixelSprite, Underline, MAX_FILTER_GROUP_DEPTH,
 };
 use gpui_render::blur::{FilterCompositeClip, FilterCompositeParameters};
 use gpui_render::shaders::{
@@ -28,7 +28,22 @@ pub(super) fn render_to_view(
     renderer.retain_surface_cache(&scene.surfaces);
 
     match FrameEncoder::new(renderer, scene, targets).encode(readback) {
-        Ok(command_buffer) => Some(renderer.resources().queue.submit([command_buffer])),
+        Ok(command_buffer) => {
+            let submitted = renderer.resources().queue.submit([command_buffer]);
+            // Perf HUD: block until the GPU finishes this frame so GPU_WAIT_MS
+            // (execution time) is separated from PRESENT_MS (swapchain/vsync
+            // wait). Measurement instrumentation.
+            let t_gpu = std::time::Instant::now();
+            let _ = renderer.resources().device.poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            });
+            crate::perf::GPU_WAIT_MS.store(
+                t_gpu.elapsed().as_millis() as u32,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            Some(submitted)
+        }
         Err(DrawError::ExternalSurface) => None,
         Err(DrawError::CapacityPlanningInvariant) => {
             log::error!("frame storage exceeded its precomputed capacity");
@@ -246,6 +261,8 @@ impl FrameRequirements {
         let planned = scene.render_plan().requirements();
         let mut storage_bytes = 0_u64;
         let mut instance_batches = 0_u64;
+        // Perf HUD counters (see crate::perf).
+        let (mut quads, mut path_verts, mut sprites, mut other) = (0u32, 0u32, 0u32, 0u32);
         let mut reserve = |element_size: usize, count: usize| {
             if count > 0 {
                 let stride = element_size as u64;
@@ -261,9 +278,11 @@ impl FrameRequirements {
             };
             match batch {
                 PrimitiveBatch::Shadows { range, .. } => {
+                    other += range.len() as u32;
                     reserve(std::mem::size_of::<Shadow>(), range.len())
                 }
                 PrimitiveBatch::Quads { range, .. } => {
+                    quads += range.len() as u32;
                     reserve(std::mem::size_of::<Quad>(), range.len())
                 }
                 PrimitiveBatch::Paths {
@@ -271,6 +290,8 @@ impl FrameRequirements {
                     sprite_count,
                     ..
                 } if *rasterization_vertex_count > 0 => {
+                    path_verts += *rasterization_vertex_count as u32;
+                    sprites += *sprite_count as u32;
                     reserve(
                         std::mem::size_of::<path_types::PathRasterizationVertex>(),
                         *rasterization_vertex_count,
@@ -278,15 +299,19 @@ impl FrameRequirements {
                     reserve(std::mem::size_of::<path_types::PathSprite>(), *sprite_count);
                 }
                 PrimitiveBatch::Underlines(range) => {
+                    other += range.len() as u32;
                     reserve(std::mem::size_of::<Underline>(), range.len())
                 }
                 PrimitiveBatch::MonochromeSprites { range, .. } => {
+                    sprites += range.len() as u32;
                     reserve(std::mem::size_of::<MonochromeSprite>(), range.len())
                 }
                 PrimitiveBatch::SubpixelSprites { range, .. } => {
+                    sprites += range.len() as u32;
                     reserve(std::mem::size_of::<SubpixelSprite>(), range.len())
                 }
                 PrimitiveBatch::PolychromeSprites { range, .. } => {
+                    sprites += range.len() as u32;
                     reserve(std::mem::size_of::<PolychromeSprite>(), range.len())
                 }
                 PrimitiveBatch::Paths { .. }
@@ -295,6 +320,15 @@ impl FrameRequirements {
                 | PrimitiveBatch::FilterBoundary(_) => {}
             }
         }
+        {
+            use crate::perf::{OTHER, PATH_VERTS, QUADS, SPRITES};
+            use std::sync::atomic::Ordering;
+            QUADS.store(quads, Ordering::Relaxed);
+            PATH_VERTS.store(path_verts, Ordering::Relaxed);
+            SPRITES.store(sprites, Ordering::Relaxed);
+            OTHER.store(other, Ordering::Relaxed);
+        }
+
         debug_assert_eq!(instance_batches as usize, planned.instance_batch_count);
 
         Self {

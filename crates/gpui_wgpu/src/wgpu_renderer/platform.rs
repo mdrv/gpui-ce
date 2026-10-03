@@ -85,6 +85,26 @@ impl WgpuRenderer {
         if !self.target.is_configured() {
             return false;
         }
+        // Perf: frame period (ms since previous draw entry) + the actually
+        // configured present mode, published for the on-device HUD.
+        static LAST_START_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let last_ms = LAST_START_MS.swap(now_ms, std::sync::atomic::Ordering::Relaxed);
+        let period_ms = if last_ms == 0 {
+            0
+        } else {
+            (now_ms - last_ms).min(u32::MAX as u64) as u32
+        };
+        crate::perf::FRAME_PERIOD_MS.store(period_ms, std::sync::atomic::Ordering::Relaxed);
+        crate::perf::PRESENT_MODE.store(
+            self.target.configuration().present_mode as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        crate::perf::PASS_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
+        let t_acquire = std::time::Instant::now();
         let frame = match self
             .resources()
             .surface
@@ -113,12 +133,43 @@ impl WgpuRenderer {
                 return false;
             }
         };
+        crate::perf::ACQUIRE_MS.store(
+            t_acquire.elapsed().as_millis() as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let t_render = std::time::Instant::now();
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let rendered = self.render_to_view(scene, &view);
+        crate::perf::RENDER_MS.store(
+            t_render.elapsed().as_millis() as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         if rendered {
+            let t_present = std::time::Instant::now();
             frame.present();
+            crate::perf::PRESENT_MS.store(
+                t_present.elapsed().as_millis() as u32,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            crate::perf::FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let frames = crate::perf::FRAMES.load(std::sync::atomic::Ordering::Relaxed);
+            if frames % 120 == 0 {
+                log::info!(
+                    "PERF frames={frames} T{} g{} | a{} r{} p{} q{} pv{} sp{} ot{} P{}",
+                    crate::perf::FRAME_PERIOD_MS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::GPU_WAIT_MS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::ACQUIRE_MS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::RENDER_MS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::PRESENT_MS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::QUADS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::PATH_VERTS.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::SPRITES.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::OTHER.load(std::sync::atomic::Ordering::Relaxed),
+                    crate::perf::PASS_COUNT.load(std::sync::atomic::Ordering::Relaxed),
+                );
+            }
         }
         rendered
     }

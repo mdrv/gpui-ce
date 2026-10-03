@@ -7,9 +7,8 @@ use crate::WgpuTextureInfo;
 use gpui_render::shaders::interface::{self as shader_interface, BufferData};
 
 use super::{
-    WgpuRenderer,
     buffers::{InstanceSlice, InstanceUpload},
-    frame, path_types, pipelines,
+    frame, path_types, pipelines, WgpuRenderer,
 };
 
 impl WgpuRenderer {
@@ -236,6 +235,7 @@ impl WgpuRenderer {
             (path_intermediate_view, None)
         };
 
+        crate::perf::PASS_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("path_rasterization_pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
