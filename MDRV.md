@@ -204,6 +204,28 @@ allowlist now matches `NotoColorEmoji | Twemoji | AppleColorEmoji |
 SegoeUIEmoji`. SVG-in-OT fonts remain unsupported — swash has no `SVG `
 table rasterizer (COLR/CBDT/sbix/outlines only).
 
+### Render-scale knob + scene-space fragment coordinates (2026-10-03, unreleased)
+
+`WgpuRenderer::set_render_scale(f)` (0.25..=1.0; atomic in `settings.rs`)
+renders the surface at `scale × logical size` while `scene_size` keeps the
+logical scene: globals `viewport_size` stays logical so NDC, layout and
+input math need no changes. `update_drawable_size` sizes the surface;
+filters map scissor bounds scene→surface (`scene_to_surface_scale()`).
+
+The subtle half: with surface ≠ scene, every fragment comparing
+`input.position.xy()` (**surface** px, `@builtin(position)`) against
+scene-px geometry drifts silently at scale < 1 — the plain-quad fast-path
+SDF, borders/corners, gradients, shadows and path gradient fills all break
+(filled pills vanished; soft glows ghosted). Fix: `GlobalUniforms` gained
+`surface_size` **plus an explicit `padding: u32`** — Rust `Vec2f` is packed
+align-4 while WGSL `vec2<f32>` is align-8, so without the pad the Rust
+struct is 20 B vs the shader's 24 and wgpu rejects the globals bind group
+at first submit ("BindGroup ... is invalid"). Quad/smoothed-quad/shadow/
+path/blur-composite fragments now map once:
+`position * (GLOBALS.viewport_size / GLOBALS.surface_size)`. Metal
+(`metal_renderer.rs`) and DirectX (`directx_renderer.rs`) literals set
+`surface_size = viewport` (no knob on those backends).
+
 ## Fork tooling & CI
 
 - `script/check-upstream [ref|--stat]` — enforces the registry: every

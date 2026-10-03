@@ -33,7 +33,7 @@ pub(super) fn render_to_view(
             // Perf HUD: block until the GPU finishes this frame so GPU_WAIT_MS
             // (execution time) is separated from PRESENT_MS (swapchain/vsync
             // wait). Measurement instrumentation.
-            let t_gpu = std::time::Instant::now();
+            let t_gpu = web_time::Instant::now();
             let _ = renderer.resources().device.poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: None,
@@ -192,13 +192,19 @@ fn write_shader_globals(renderer: &mut WgpuRenderer) {
     };
     let globals = GlobalUniforms {
         viewport_size: wgsl_rs::std::vec2f(
-            renderer.target.width() as f32,
-            renderer.target.height() as f32,
+            // Logical scene size, not the (possibly scaled) surface size:
+            // scene vertex coordinates divide by this for NDC.
+            renderer.scene_size.width.0 as f32,
+            renderer.scene_size.height.0 as f32,
         ),
         premultiplied_alpha: ShaderBool::from(
             renderer.target.alpha_mode() == wgpu::CompositeAlphaMode::PreMultiplied,
         ),
         padding: 0,
+        surface_size: wgsl_rs::std::vec2f(
+            renderer.target.width() as f32,
+            renderer.target.height() as f32,
+        ),
     };
     let path_globals = GlobalUniforms {
         premultiplied_alpha: ShaderBool::Disabled,

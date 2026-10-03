@@ -6025,6 +6025,27 @@ impl Window {
         }
 
         self.finish_dispatch_key_event(event, dispatch_path, match_result.context_stack, cx);
+
+        // Android soft keyboards (and other platforms without a real IME
+        // channel) deliver printable characters as plain KeyDown events with
+        // `prefer_character_input`. If the event propagated unhandled and a
+        // focused input handler accepts text, insert the character there so
+        // standard gpui text inputs receive it. Platforms WITH an IME bridge
+        // (macOS, web) never set prefer_character_input, and apps with custom
+        // text machinery don't register input handlers, so this is inert for
+        // both.
+        if cx.propagate_event
+            && let Some(key_down) = event.downcast_ref::<KeyDownEvent>()
+            && key_down.prefer_character_input
+            && let Some(input) = key_down.keystroke.key_char.clone()
+            && let Some(mut input_handler) = self.platform_window.take_input_handler()
+        {
+            if input_handler.query_accepts_text_input() {
+                input_handler.dispatch_input(&input, self, cx);
+            }
+            self.platform_window.set_input_handler(input_handler);
+        }
+
         self.pending_input_changed(cx);
     }
 

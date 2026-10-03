@@ -223,10 +223,16 @@ pub mod blur {
         if is_clipped(input.clip_distances) {
             return transparent();
         }
+        // `position` is in surface pixels while the bounds/corner radii are in
+        // logical scene pixels; they only coincide at a render scale of 1.0.
+        // Map the fragment into scene space before the SDF (the UV math in
+        // blur_composite_color stays in surface space on purpose).
+        let scene_position =
+            input.position.xy() * (get!(GLOBALS).viewport_size / get!(BLUR_LOCALS).target_size);
         let coverage = select(
             1.0,
             antialiased_coverage(rounded_rectangle_signed_distance(
-                input.position.xy(),
+                scene_position,
                 get!(BLUR_LOCALS).bounds,
                 get!(BLUR_LOCALS).corner_radii,
             )),
@@ -284,10 +290,13 @@ pub mod blur {
         if is_clipped(input.clip_distances) {
             return transparent();
         }
+        // Same surface→scene mapping as fragment_blur_composite above.
+        let scene_position =
+            input.position.xy() * (get!(GLOBALS).viewport_size / get!(BLUR_LOCALS).target_size);
         let coverage = select(
             1.0,
             antialiased_coverage(prepared_corner_signed_distance(
-                input.position.xy(),
+                scene_position,
                 get!(BLUR_LOCALS).bounds,
                 get!(BLUR_LOCALS).corner_radii,
                 get!(BLUR_LOCALS).corner_smoothing,

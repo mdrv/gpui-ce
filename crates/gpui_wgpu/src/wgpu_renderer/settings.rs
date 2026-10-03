@@ -1,4 +1,25 @@
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use gpui::{get_gamma_correction_ratios, DevicePixels, Size};
+
+/// Logical-scene → surface-pixel scale factor for the render-scale knob
+/// (`set_render_scale`). Stored as percent so an atomic suffices. Rendering
+/// below native resolution trades sharpness for fill rate — the dominant GPU
+/// cost on budget mobile GPUs (the quad/text shaders are fill-bound).
+static RENDER_SCALE_PERCENT: AtomicU32 = AtomicU32::new(100);
+
+/// Sets the render scale (clamped to 0.25..=1.0). Affects every renderer that
+/// resizes afterwards; call `WgpuRenderer::set_render_scale` to apply it to a
+/// live surface immediately.
+pub fn set_render_scale(scale: f32) {
+    let percent = (scale.clamp(0.25, 1.0) * 100.0).round() as u32;
+    RENDER_SCALE_PERCENT.store(percent, Ordering::SeqCst);
+}
+
+/// The current render scale (1.0 = native resolution).
+pub fn render_scale() -> f32 {
+    RENDER_SCALE_PERCENT.load(Ordering::SeqCst) as f32 / 100.0
+}
 
 pub struct WgpuSurfaceConfig {
     pub size: Size<DevicePixels>,

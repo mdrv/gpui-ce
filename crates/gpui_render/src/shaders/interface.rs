@@ -187,7 +187,8 @@ pub const RENDER_BUFFER_LAYOUTS: &[gpui::SceneBufferLayout] = &[
         "GlobalUniforms",
         viewport_size,
         premultiplied_alpha,
-        padding
+        padding,
+        surface_size
     ),
     render_layout!(
         super::common::FontRasterizationUniforms,

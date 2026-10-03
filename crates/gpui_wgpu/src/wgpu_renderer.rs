@@ -33,7 +33,9 @@ pub use headless::WgpuHeadlessRenderer;
 use pipelines::WgpuPipelines as ShaderPipelines;
 use resources::{GlobalBufferLayout, ResourceMetadata, WgpuResources};
 use settings::RenderingParameters;
-pub use settings::{FontRasterizationSettings, SubpixelOrder, WgpuSurfaceConfig};
+pub use settings::{
+    FontRasterizationSettings, SubpixelOrder, WgpuSurfaceConfig, render_scale, set_render_scale,
+};
 use target::RenderTarget;
 
 /// Shared GPU context reference, used to coordinate device recovery across multiple windows.
@@ -59,6 +61,10 @@ pub struct WgpuRenderer {
     extra_requirements: Option<WgpuDeviceRequirements>,
     resources: Option<WgpuResources>,
     target: RenderTarget,
+    /// Logical (unscaled) scene size callers asked for; the surface itself may
+    /// be smaller by the render scale. Globals use this so scene coordinates
+    /// keep mapping to NDC correctly at scale < 1.
+    scene_size: Size<DevicePixels>,
     atlas: Arc<WgpuAtlas>,
     globals: GlobalBufferLayout,
     rendering_params: RenderingParameters,
@@ -91,6 +97,7 @@ impl WgpuRenderer {
         extra_requirements: Option<WgpuDeviceRequirements>,
         atlas: Arc<WgpuAtlas>,
     ) -> anyhow::Result<Self> {
+        let scene_size = config.size;
         let target =
             RenderTarget::new(&context.adapter, &context.device, surface.as_ref(), config)?;
         if let Some(surface) = surface.as_ref() {
@@ -118,6 +125,7 @@ impl WgpuRenderer {
             extra_requirements,
             resources: Some(resources),
             target,
+            scene_size,
             atlas,
             globals,
             rendering_params,
@@ -136,7 +144,15 @@ impl WgpuRenderer {
     }
 
     pub fn update_drawable_size(&mut self, size: Size<DevicePixels>) {
-        if !self.target.resize(size) {
+        self.scene_size = size;
+        let scale = settings::render_scale();
+        // The surface renders at `scale * scene size`; scene coordinates stay
+        // logical so no upstream layout or input math changes.
+        let surface = Size {
+            width: DevicePixels(((size.width.0 as f32 * scale).round() as i32).max(1)),
+            height: DevicePixels(((size.height.0 as f32 * scale).round() as i32).max(1)),
+        };
+        if !self.target.resize(surface) {
             return;
         }
         let config = self.target.configuration().clone();
@@ -147,6 +163,21 @@ impl WgpuRenderer {
         if let Some(surface) = resources.surface.as_ref() {
             surface.configure(&resources.device, &config);
         }
+    }
+
+    /// Updates the render scale and reconfigures the surface at the stored
+    /// logical size. Globals are rebuilt automatically because the uniform
+    /// cache compares the full state including the (logical) viewport size.
+    pub fn set_render_scale(&mut self, scale: f32) {
+        settings::set_render_scale(scale);
+        self.update_drawable_size(self.scene_size);
+    }
+
+    /// Ratio of surface pixels to scene pixels for the current render scale.
+    /// Filters need this to map scene-space bounds into surface-space scissors.
+    pub fn scene_to_surface_scale(&self) -> f32 {
+        let scene_width = self.scene_size.width.0.max(1) as f32;
+        self.target.width() as f32 / scene_width
     }
 
     /// Selects the physical LCD component order used by subpixel glyph correction.

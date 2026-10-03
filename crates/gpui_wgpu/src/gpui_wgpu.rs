@@ -11,6 +11,7 @@ pub use wgpu_context::*;
 pub use wgpu_renderer::WgpuHeadlessRenderer;
 pub use wgpu_renderer::{
     FontRasterizationSettings, GpuContext, SubpixelOrder, WgpuRenderer, WgpuSurfaceConfig,
+    render_scale, set_render_scale,
 };
 
 /// Frame-cost diagnostics for on-device HUDs (the test phone's MIUI ROM ships

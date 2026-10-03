@@ -645,8 +645,14 @@ pub mod quad {
         if input.plain_bounds.x < -0.5 {
             return transparent();
         }
+
+        // `position` is in surface pixels; quad geometry is in logical scene
+        // pixels. They only coincide at a render scale of 1.0, so map the
+        // fragment into scene space once and use it for every SDF/paint test.
+        let scene_position =
+            input.position.xy() * (get!(GLOBALS).viewport_size / get!(GLOBALS).surface_size);
         if input.plain_fill.w > 0.0 {
-            let p = input.position.xy();
+            let p = scene_position;
             let d = min(
                 min(p.x - input.plain_bounds.x, input.plain_bounds.z - p.x),
                 min(p.y - input.plain_bounds.y, input.plain_bounds.w - p.y),
@@ -658,14 +664,14 @@ pub mod quad {
         let quad = get!(QUADS)[input.quad_id as usize];
         let fill_color = paint_color(
             Paint::new(quad.background, quad.bounds),
-            input.position.xy(),
+            scene_position,
             PreparedPaint::new(input.fill_solid, input.fill_color0, input.fill_color1),
         );
         if Edges::is_zero(quad.border_widths) && Corners::is_zero(quad.corner_radii) {
             return blend_color(fill_color, 1.0);
         }
 
-        let geometry = quad_geometry(quad, input.position.xy());
+        let geometry = quad_geometry(quad, scene_position);
         if is_unaffected_background(geometry) {
             return blend_color(fill_color, 1.0);
         }
@@ -675,7 +681,7 @@ pub mod quad {
         if max(distances.inner, distances.outer) < PIXEL_ANTIALIAS_RADIUS {
             let mut border_color = paint_color(
                 Paint::new(quad.border_color, quad.bounds),
-                input.position.xy(),
+                scene_position,
                 PreparedPaint::new(input.border_solid, input.border_color0, input.border_color1),
             );
             if quad.border_style == BorderStyle::Dashed {
@@ -773,10 +779,14 @@ pub mod quad {
         if is_clipped(input.clip_distances) {
             return transparent();
         }
+        // Map surface px into logical scene px (render-scale aware).
+        let scene_position =
+            input.position.xy() * (get!(GLOBALS).viewport_size / get!(GLOBALS).surface_size);
+
         let quad = get!(QUADS)[input.quad_id as usize];
         let fill_color = paint_color(
             Paint::new(quad.background, quad.bounds),
-            input.position.xy(),
+            scene_position,
             PreparedPaint::new(input.fill_solid, input.fill_color0, input.fill_color1),
         );
         let prepared = PreparedCorners {
@@ -788,7 +798,7 @@ pub mod quad {
 
         if Edges::is_zero(quad.border_widths) {
             let distance = prepared_corner_signed_distance(
-                input.position.xy(),
+                scene_position,
                 quad.bounds,
                 quad.corner_radii,
                 quad.corner_smoothing,
@@ -798,9 +808,9 @@ pub mod quad {
             return blend_color(fill_color, antialiased_coverage(distance));
         }
 
-        let geometry = quad_geometry(quad, input.position.xy());
+        let geometry = quad_geometry(quad, scene_position);
         let rectangle_sample = figma_smooth_rectangle_sample(
-            input.position.xy(),
+            scene_position,
             quad.bounds,
             quad.corner_radii,
             prepared.horizontal_reaches,
@@ -876,7 +886,7 @@ pub mod quad {
         if max(inner, outer) < PIXEL_ANTIALIAS_RADIUS {
             let mut border_color = paint_color(
                 Paint::new(quad.border_color, quad.bounds),
-                input.position.xy(),
+                scene_position,
                 PreparedPaint::new(input.border_solid, input.border_color0, input.border_color1),
             );
             if quad.border_style == BorderStyle::Dashed {

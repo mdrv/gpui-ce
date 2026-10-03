@@ -226,13 +226,17 @@ pub mod shadow {
         if is_clipped(input.clip_distances) {
             return transparent();
         }
+        // Map surface px into logical scene px (render-scale aware).
+        let scene_position =
+            input.position.xy() * (get!(GLOBALS).viewport_size / get!(GLOBALS).surface_size);
+
         let shadow = get!(SHADOWS)[input.shadow_id as usize];
         let color = paint_color(
             shadow_paint(shadow),
-            input.position.xy(),
+            scene_position,
             PreparedPaint::new(input.paint_solid, input.paint_color0, input.paint_color1),
         );
-        blend_color(color, shadow_coverage(shadow, input.position.xy()))
+        blend_color(color, shadow_coverage(shadow, scene_position))
     }
 
     #[derive(Wgsl)]
@@ -310,10 +314,14 @@ pub mod shadow {
         if is_clipped(input.clip_distances) {
             return transparent();
         }
+        // Map surface px into logical scene px (render-scale aware).
+        let scene_position =
+            input.position.xy() * (get!(GLOBALS).viewport_size / get!(GLOBALS).surface_size);
+
         let shadow = get!(SHADOWS)[input.shadow_id as usize];
         let coverage = smoothed_shadow_coverage(
             shadow,
-            input.position.xy(),
+            scene_position,
             PreparedCorners {
                 horizontal_reaches: input.horizontal_corner_reaches,
                 vertical_reaches: input.vertical_corner_reaches,
@@ -329,7 +337,7 @@ pub mod shadow {
         );
         let color = paint_color(
             shadow_paint(shadow),
-            input.position.xy(),
+            scene_position,
             PreparedPaint::new(input.paint_solid, input.paint_color0, input.paint_color1),
         );
         blend_color(color, coverage)

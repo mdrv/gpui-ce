@@ -404,6 +404,8 @@ impl DirectXRenderer {
                 // premultiplies in-shader; scene geometry blends straight alpha as before.
                 premultiplied_alpha: ShaderBool::Disabled,
                 padding: 0,
+                // No render-scale knob on this backend: surface == viewport.
+                surface_size: vec2f(resources.viewport.Width, resources.viewport.Height),
             }],
         )?;
         update_buffer(

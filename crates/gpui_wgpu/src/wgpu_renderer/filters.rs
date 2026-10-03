@@ -1,4 +1,4 @@
-use gpui::{BackdropFilter, ScaledPixels};
+use gpui::{BackdropFilter, Bounds, ScaledPixels, point, size};
 use gpui_render::shaders::interface as shader_interface;
 use gpui_render::{
     blur::{
@@ -81,9 +81,24 @@ impl WgpuRenderer {
             downsampled_dimension(full_height) as f32,
         ];
         let dilation = GAUSSIAN_CUTOFF_STANDARD_DEVIATIONS * parameters.blur_radius;
+        // The scissor math runs in surface pixels while `parameters.bounds` are
+        // scene pixels; at a render scale < 1 the two spaces differ, so map the
+        // blur region across first (dilation is a scene-space radius too).
+        let surface_scale = self.scene_to_surface_scale();
+        let blur_region = parameters.bounds;
+        let scaled_bounds = Bounds::new(
+            point(
+                ScaledPixels(blur_region.origin.x.0 * surface_scale),
+                ScaledPixels(blur_region.origin.y.0 * surface_scale),
+            ),
+            size(
+                ScaledPixels(blur_region.size.width.0 * surface_scale),
+                ScaledPixels(blur_region.size.height.0 * surface_scale),
+            ),
+        );
         let scissor = ScissorRectangle::for_blurred_bounds(
-            parameters.bounds,
-            dilation,
+            scaled_bounds,
+            dilation * surface_scale,
             full_width,
             full_height,
         );

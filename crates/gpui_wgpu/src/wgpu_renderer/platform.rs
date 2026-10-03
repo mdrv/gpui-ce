@@ -88,8 +88,8 @@ impl WgpuRenderer {
         // Perf: frame period (ms since previous draw entry) + the actually
         // configured present mode, published for the on-device HUD.
         static LAST_START_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let now_ms = web_time::SystemTime::now()
+            .duration_since(web_time::SystemTime::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
         let last_ms = LAST_START_MS.swap(now_ms, std::sync::atomic::Ordering::Relaxed);
@@ -104,7 +104,7 @@ impl WgpuRenderer {
             std::sync::atomic::Ordering::Relaxed,
         );
         crate::perf::PASS_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
-        let t_acquire = std::time::Instant::now();
+        let t_acquire = web_time::Instant::now();
         let frame = match self
             .resources()
             .surface
@@ -137,7 +137,7 @@ impl WgpuRenderer {
             t_acquire.elapsed().as_millis() as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
-        let t_render = std::time::Instant::now();
+        let t_render = web_time::Instant::now();
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -147,7 +147,7 @@ impl WgpuRenderer {
             std::sync::atomic::Ordering::Relaxed,
         );
         if rendered {
-            let t_present = std::time::Instant::now();
+            let t_present = web_time::Instant::now();
             frame.present();
             crate::perf::PRESENT_MS.store(
                 t_present.elapsed().as_millis() as u32,
@@ -268,7 +268,7 @@ impl WgpuRenderer {
             .as_ref()
             .is_none_or(WgpuContext::device_lost);
         if needs_new_context {
-            let now = std::time::Instant::now();
+            let now = web_time::Instant::now();
             match self.faults.recovery_not_before {
                 None => {
                     self.faults.recovery_not_before =
@@ -301,7 +301,7 @@ impl WgpuRenderer {
                 Ok(result) => result,
                 Err(error) => {
                     self.faults.recovery_not_before =
-                        Some(std::time::Instant::now() + std::time::Duration::from_millis(350));
+                        Some(web_time::Instant::now() + std::time::Duration::from_millis(350));
                     return Err(error);
                 }
             };

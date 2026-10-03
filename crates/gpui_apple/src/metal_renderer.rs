@@ -74,6 +74,11 @@ impl SceneUniforms {
                 // the neutral (disabled) shader behavior.
                 premultiplied_alpha: ShaderBool::Disabled,
                 padding: 0,
+                // No render-scale knob on this backend: surface == viewport.
+                surface_size: vec2f(
+                    i32::from(viewport_size.width) as f32,
+                    i32::from(viewport_size.height) as f32,
+                ),
             },
             // Metal text is gamma-corrected grayscale; font corrections stay neutral.
             font: FontRasterizationUniforms {

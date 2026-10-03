@@ -116,6 +116,13 @@ mod source {
         pub viewport_size: Vec2f,
         pub premultiplied_alpha: ShaderBool,
         pub padding: u32,
+        /// Physical surface size. With the render-scale knob the surface is
+        /// smaller than `viewport_size` (logical); fragment shaders map
+        /// `position` (surface px) into scene px with the viewport/surface
+        /// ratio before comparing against scene-space geometry. Explicit
+        /// padding keeps the Vec2f at offset 16 in BOTH the Rust (align-4
+        /// packed Vec2f) and WGSL (align-8 vec2<f32>) layouts.
+        pub surface_size: Vec2f,
     }
 
     #[repr(C)]
