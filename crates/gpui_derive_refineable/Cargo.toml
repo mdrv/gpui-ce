@@ -1,6 +1,6 @@
 [package]
 name = "mdrv-gpui-derive-refineable"
-version = "0.0.260925"
+version = "0.270.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = true

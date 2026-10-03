@@ -1,6 +1,6 @@
 [package]
 name = "mdrv-gpui-tokio"
-version = "0.0.260925"
+version = "0.270.0"
 description.workspace = true
 edition.workspace = true
 publish.workspace = true

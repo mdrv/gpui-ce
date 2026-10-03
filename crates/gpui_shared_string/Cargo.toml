@@ -1,6 +1,6 @@
 [package]
 name = "mdrv-gpui-shared-string"
-version = "0.0.260925"
+version = "0.270.0"
 description = "Shared immutable string types for GPUI CE"
 publish.workspace = true
 edition.workspace = true

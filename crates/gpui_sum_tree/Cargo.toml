@@ -1,6 +1,6 @@
 [package]
 name = "mdrv-gpui-sum-tree"
-version = "0.0.260925"
+version = "0.270.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Copy-on-write B+ tree with monoidal summaries for gpui-ce (vendored from Zed)."

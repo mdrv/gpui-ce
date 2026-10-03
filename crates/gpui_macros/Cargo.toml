@@ -1,6 +1,6 @@
 [package]
 name = "mdrv-gpui-macros"
-version = "0.0.260925"
+version = "0.270.0"
 edition.workspace = true
 publish = true
 license = "Apache-2.0"
